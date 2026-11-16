@@ -1,0 +1,36 @@
+# Sample run: 6 DAIC-WOZ sessions, 2 per split, 1 depressed + 1 not per split.
+# Dev pair has gender flipped relative to train/test so gender is not confounded with label.
+dataset:
+  base_url: https://dcapswoz.ict.usc.edu/wwwdaicwoz/
+  data_dir: data/daicwoz
+  sessions: [303, 319, 302, 335, 306, 309]
+  # Documented issues (AVEC2017 docs) + commonly cited transcript timing offsets.
+  exclude: [318, 321, 341, 342, 362, 373, 394, 398, 444, 451, 458, 460, 480]
+
+segmentation:
+  min_dur_s: 1.0        # turns shorter than this are merged or dropped
+  merge_max_gap_s: 0.5  # merge a short turn into an adjacent participant turn only if gap <= this
+  max_dur_s: 30.0       # longer segments are split at a pause
+  split_search_s: 3.0   # look for the lowest-energy point within this window before max_dur_s
+
+models:
+  whisper_small:
+    id: openai/whisper-small
+    revision: main        # resolved to a commit sha at run time and recorded in manifest.json
+  hubert_base:
+    id: facebook/hubert-base-ls960
+    revision: main
+  frame_layers: [0, 6, 12]
+
+text_models:
+  roberta_base:
+    id: FacebookAI/roberta-base
+    revision: main
+  mpnet:
+    id: sentence-transformers/all-mpnet-base-v2
+    revision: main
+
+output:
+  dir: outputs/sample
+  hf_repo: gabelev/daic-woz-embeddings-sample
+  private: true

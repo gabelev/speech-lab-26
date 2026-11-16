@@ -1,0 +1,9 @@
+# Raw DAIC-WOZ data and generated outputs are covered by the EULA: never commit them.
+data/
+outputs/
+*.wav
+*.zip
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
