@@ -16,9 +16,9 @@ for testing the pipeline and probe code. The full-corpus run comes next.
 
 ## Reading the data
 
-**Hugging Face repo (private):** https://huggingface.co/datasets/gabelev/daic-woz-embeddings-sample
+**Hugging Face repo (private):** https://huggingface.co/datasets/GenerationGenerative/daic-woz-embeddings-sample
 
-Ask the repo owner for access. You must have signed the DAIC-WOZ EULA first.
+Access goes through the `GenerationGenerative` organization: ask an org admin to add you, after you have signed the DAIC-WOZ EULA. If you use a fine-grained token, give it read access to `GenerationGenerative` repos.
 
 ### 1. Install and authenticate
 
@@ -42,7 +42,7 @@ Hugging Face cache (about 1 GB, or about 45 MB with `frames=False`).
 ```python
 from speechlab.load import EmbeddingDataset
 
-ds = EmbeddingDataset.from_hub("gabelev/daic-woz-embeddings-sample")   # or EmbeddingDataset("outputs/sample/hf")
+ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings-sample")   # or EmbeddingDataset("outputs/sample/hf")
 
 seg = ds.segments()                                    # one row per segment: times, text, split, PHQ-8, gender
 X   = ds.pooled("hubert_base", layer=9)                # [N, 768] float32, mean over frames
@@ -89,7 +89,7 @@ python examples/read_embeddings.py                       # summary of the HF rep
 ```
 
 ```bash
-python scripts/validate.py --hf gabelev/daic-woz-embeddings-sample   # consistency checks + smoke probe
+python scripts/validate.py --hf GenerationGenerative/daic-woz-embeddings-sample   # consistency checks + smoke probe
 ```
 
 ### Without this package
@@ -100,7 +100,7 @@ All files are plain parquet and safetensors:
 import pandas as pd, numpy as np, pyarrow.parquet as pq
 from huggingface_hub import snapshot_download
 
-root = snapshot_download("gabelev/daic-woz-embeddings-sample", repo_type="dataset")
+root = snapshot_download("GenerationGenerative/daic-woz-embeddings-sample", repo_type="dataset")
 seg = pd.read_parquet(f"{root}/segments.parquet")
 col = pq.read_table(f"{root}/hubert_base/pooled.parquet", columns=["mean_l09"]).column(0).combine_chunks()
 X = col.flatten().to_numpy().reshape(len(col), 768).astype(np.float32)

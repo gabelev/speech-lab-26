@@ -4,7 +4,7 @@ layer at segment level. With a handful of sessions the AUCs only show that the p
 works end to end, not that the results mean anything.
 
     python scripts/validate.py outputs/sample/hf
-    python scripts/validate.py --hf gabelev/daic-woz-embeddings-sample
+    python scripts/validate.py --hf GenerationGenerative/daic-woz-embeddings-sample
 """
 
 from __future__ import annotations

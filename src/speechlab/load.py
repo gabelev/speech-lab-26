@@ -6,7 +6,7 @@ in the same row order as ``segments.parquet``.
 
     from speechlab.load import EmbeddingDataset
 
-    ds = EmbeddingDataset.from_hub("gabelev/daic-woz-embeddings-sample")
+    ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings-sample")
     seg = ds.segments()                                   # metadata DataFrame
     X = ds.pooled("hubert_base", layer=9)                 # [N, 768] float32 (mean)
     S = ds.pooled("whisper_small", layer=4, stat="std")   # [N, 768]
@@ -45,7 +45,7 @@ class EmbeddingDataset:
             raise FileNotFoundError(f"{self.root} does not look like an embedding dataset folder")
 
     @classmethod
-    def from_hub(cls, repo_id: str = "gabelev/daic-woz-embeddings-sample", revision: str | None = None,
+    def from_hub(cls, repo_id: str = "GenerationGenerative/daic-woz-embeddings-sample", revision: str | None = None,
                  frames: bool = True) -> "EmbeddingDataset":
         """Download (or reuse the cache of) the HF dataset repo. Needs a token with read
         access to the private repo (``huggingface-cli login`` or ``HF_TOKEN``).

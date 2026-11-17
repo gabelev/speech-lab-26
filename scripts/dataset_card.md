@@ -48,7 +48,7 @@ Layer 0 is the pre-transformer output and layers 1–12 are the transformer bloc
 from huggingface_hub import snapshot_download
 import pandas as pd, numpy as np, pyarrow.parquet as pq
 
-root = snapshot_download("gabelev/daic-woz-embeddings-sample", repo_type="dataset")
+root = snapshot_download("GenerationGenerative/daic-woz-embeddings-sample", repo_type="dataset")
 seg = pd.read_parquet(f"{root}/segments.parquet")
 t = pq.read_table(f"{root}/hubert_base/pooled.parquet", columns=["segment_id", "mean_l09"])
 X = np.stack(t.column("mean_l09").to_numpy(zero_copy_only=False)).astype(np.float32)  # [N, 768]

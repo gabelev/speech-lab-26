@@ -32,5 +32,5 @@ text_models:
 
 output:
   dir: outputs/sample
-  hf_repo: gabelev/daic-woz-embeddings-sample
+  hf_repo: GenerationGenerative/daic-woz-embeddings-sample
   private: true
