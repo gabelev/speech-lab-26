@@ -19,7 +19,9 @@ SPLIT_FILES = {
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(url) as r, open(tmp, "wb") as f:
+    # The server rejects Python's default "Python-urllib" User-Agent with 403.
+    req = urllib.request.Request(url, headers={"User-Agent": "speechlab-pipeline/0.1"})
+    with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
         shutil.copyfileobj(r, f, length=1 << 20)
     tmp.rename(dest)
 
