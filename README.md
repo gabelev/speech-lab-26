@@ -4,8 +4,9 @@ Code for work with the Speech Lab at Columbia: segment-level speech and text emb
 **DAIC-WOZ** depression interview corpus. They support layer-wise probing and interpretability work
 on Whisper, HuBERT, eGeMAPS and text representations.
 
-The design follows the RFC *"DAIC-WOZ Embedding Generation"*. The current release is a **6-session sample**
-for testing the pipeline and probe code. The full-corpus run comes next.
+The design follows the RFC *"DAIC-WOZ Embedding Generation"*. There are two releases:
+- **Full corpus:** 179 sessions and 22,083 segments, in `GenerationGenerative/daic-woz-embeddings`.
+- **Sample:** 6 sessions, for quick tests of the pipeline and probe code, in `GenerationGenerative/daic-woz-embeddings-sample`.
 
 > **Data access.** DAIC-WOZ is released under a EULA from USC ICT. Raw audio, transcripts and every derived
 > file (embeddings, transcripts, PHQ-8 labels) must stay with people who have signed it. This repo holds
@@ -16,7 +17,12 @@ for testing the pipeline and probe code. The full-corpus run comes next.
 
 ## Reading the data
 
-**Hugging Face repo (private):** https://huggingface.co/datasets/GenerationGenerative/daic-woz-embeddings-sample
+**Hugging Face repos (private):**
+- **Full corpus:** https://huggingface.co/datasets/GenerationGenerative/daic-woz-embeddings
+  - 179 sessions, 22,083 segments, 21.9 h of participant speech.
+  - About 2 GB without frames, 38 GB with them.
+- **Sample:** https://huggingface.co/datasets/GenerationGenerative/daic-woz-embeddings-sample
+  - 6 sessions, about 1 GB.
 
 Access goes through the `GenerationGenerative` organization: ask an org admin to add you, after you have signed the DAIC-WOZ EULA. If you use a fine-grained token, give it read access to `GenerationGenerative` repos.
 
@@ -36,13 +42,15 @@ huggingface-cli login   # or: export HF_TOKEN=hf_...  (a token with read access 
 
 ### 2. Load with `EmbeddingDataset`
 
-`src/speechlab/load.py` wraps every table. On first use it downloads the repo into the
-Hugging Face cache (about 1 GB, or about 45 MB with `frames=False`).
+`src/speechlab/load.py` wraps every table. On first use it downloads the repo into the Hugging Face cache.
+- **Full corpus:** use `frames=False` unless you need frames. The pooled tables take about 2 GB, and the frames add 36 GB.
+- **Sample:** about 1 GB, or about 45 MB with `frames=False`.
 
 ```python
 from speechlab.load import EmbeddingDataset
 
-ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings-sample")   # or EmbeddingDataset("outputs/sample/hf")
+ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings", frames=False)
+# sample: EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings-sample"); local: EmbeddingDataset("outputs/full/hf")
 
 seg = ds.segments()                                    # one row per segment: times, text, split, PHQ-8, gender
 X   = ds.pooled("hubert_base", layer=9)                # [N, 768] float32, mean over frames
@@ -66,21 +74,21 @@ Every array's rows are in the same order as `ds.segments()`, so they line up by 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import GroupKFold
 
 seg = ds.segments()
 y, groups = seg.phq8_binary.values, seg.session_id.values
 for layer in range(13):
     X = ds.pooled("hubert_base", layer)
     scores = np.zeros(len(y))
-    for g in np.unique(groups):                     # leave-one-session-out
-        tr, te = groups != g, groups == g
+    for tr, te in GroupKFold(5).split(X, y, groups):  # never split a session across train and test
         clf = LogisticRegression(C=0.01, max_iter=2000).fit(X[tr], y[tr])
         scores[te] = clf.predict_proba(X[te])[:, 1]
     print(layer, round(roc_auc_score(y, scores), 3))
 ```
 
-With 6 sessions, numbers like these test the code, not depression detection. A held-out session contains only one label, so the
-AUC mostly reflects speaker and recording differences.
+Segment-level AUCs pool many segments per speaker. For depression results, report session-level scores on the official
+train/dev/test splits (`ds.session_pool`). On the 6-session sample, numbers like these only show that the code runs.
 
 ### Quick look and sanity checks
 
@@ -89,7 +97,7 @@ python examples/read_embeddings.py                       # summary of the HF rep
 ```
 
 ```bash
-python scripts/validate.py --hf GenerationGenerative/daic-woz-embeddings-sample   # consistency checks + smoke probe
+python scripts/validate.py --hf GenerationGenerative/daic-woz-embeddings   # consistency checks + probe (frames for 3 sessions)
 ```
 
 ### Without this package
@@ -100,7 +108,7 @@ All files are plain parquet and safetensors:
 import pandas as pd, numpy as np, pyarrow.parquet as pq
 from huggingface_hub import snapshot_download
 
-root = snapshot_download("GenerationGenerative/daic-woz-embeddings-sample", repo_type="dataset")
+root = snapshot_download("GenerationGenerative/daic-woz-embeddings", repo_type="dataset", ignore_patterns=["*/frames/*"])
 seg = pd.read_parquet(f"{root}/segments.parquet")
 col = pq.read_table(f"{root}/hubert_base/pooled.parquet", columns=["mean_l09"]).column(0).combine_chunks()
 X = col.flatten().to_numpy().reshape(len(col), 768).astype(np.float32)
@@ -125,7 +133,26 @@ X = col.flatten().to_numpy().reshape(len(col), 768).astype(np.float32)
 transformer blocks. For the Whisper encoder, layer 12 comes after the final layer norm.
 `gender` keeps the 0/1 coding of the DAIC-WOZ split files.
 
-### Current sample (6 sessions, 491 segments)
+### Full corpus (179 sessions, 22,083 segments)
+
+| split | sessions | depressed | segments | speech (h) |
+|---|---|---|---|---|
+| train | 102 | 28 | 11,564 | 11.7 |
+| dev | 32 | 11 | 4,325 | 4.1 |
+| test | 45 | 14 | 6,194 | 6.0 |
+
+- **Segment length:** median 2.8 s, mean 3.6 s, range 1–29.4 s.
+- **Merged and dropped turns:** of 30,532 participant transcript rows, 984 were merged into a neighbouring turn and 7,341 short turns (24%) were dropped. See the open decisions below.
+- **Session 440 (dev) is missing:** the DAIC-WOZ server's copy of its zip is truncated, with no zip directory and no transcript. It is listed under `config.failed_sessions` in `manifest.json`.
+
+**First-look baseline** (not a result to report):
+- **Setup:** logistic regression trained on session means of the 102 train sessions, weighted by segment duration, scored on dev and test. AUC is for PHQ-8 ≥ 10, over C ∈ {0.001, 0.01, 0.1}.
+- **Text:** RoBERTa layers 6 and 12 reach 0.69–0.79 on test, and mpnet about 0.83. This confirms the labels and segment joins line up.
+- **Speech:** Whisper, HuBERT and eGeMAPS session means stay near chance on test (about 0.4–0.6), though Whisper's last layer reaches 0.61–0.81 on dev.
+- **Segment level:** `scripts/validate.py`'s segment-level probe is about 0.5 for every model.
+- **Takeaway:** mean-pooled speech embeddings plus a linear probe aren't enough. This is the gap the layer-wise and frame-level work is meant to explore.
+
+### Sample (6 sessions, 491 segments)
 
 | split | session | PHQ-8 | depressed | gender | segments | speech (s) |
 |---|---|---|---|---|---|---|
@@ -142,7 +169,7 @@ The dev pair's genders are flipped relative to train and test, so gender isn't c
 
 ## How the data is processed
 
-Run end to end with `scripts/run_pipeline.py --config configs/sample.yaml [--push]`. All parameters are in the config.
+Run end to end with `scripts/run_pipeline.py --config configs/{sample,full}.yaml [--push]`. All parameters are in the config.
 
 ### 1. Source data
 - Each session comes from the DAIC-WOZ server as `<id>_P.zip`. Only `<id>_AUDIO.wav` (16 kHz mono) and `<id>_TRANSCRIPT.csv` are kept, and the zip is deleted.
@@ -152,6 +179,7 @@ Run end to end with `scripts/run_pipeline.py --config configs/sample.yaml [--pus
   - 373 and 444 have interruptions mid-interview.
   - 451, 458 and 480 have no Ellie transcript.
   - 318, 321, 341 and 362 have documented transcript timing offsets.
+  - 440's zip on the server is truncated. The pipeline skips any session whose zip can't be read and records it in the manifest.
 
 ### 2. Segmentation (`src/speechlab/segment.py`)
 Every feature type uses the same segments, so all tables join one to one.
@@ -187,7 +215,8 @@ Writes the dataset folder, `manifest.json` and a dataset card. It creates the HF
 ## Repository layout
 
 ```
-configs/sample.yaml          sessions, segmentation rules, model ids, frame layers, HF repo
+configs/sample.yaml          6-session sample: sessions, segmentation rules, model ids, frame layers, HF repo
+configs/full.yaml            full corpus: all sessions, pinned model revisions, incremental frame upload
 src/speechlab/
   daicwoz.py                 download, transcript and label loading
   segment.py                 participant-turn segmentation (shared by every extractor)
@@ -202,7 +231,7 @@ examples/read_embeddings.py  loading example
 tests/                       segmentation, frame trimming, reader round-trip
 ```
 
-## Reproducing the sample
+## Reproducing
 
 ```bash
 pip install -e ".[dev]"
@@ -224,12 +253,22 @@ python scripts/validate.py outputs/sample/hf
 python scripts/run_pipeline.py --config configs/sample.yaml --push    # needs an HF write token
 ```
 
+```bash
+python scripts/run_pipeline.py --config configs/full.yaml --push      # full corpus, resumable
+```
+
+**Full run:** the full corpus took about 9 h of processing on 4 CPU cores.
+- Each session is processed separately and marked done in the cache, so a rerun resumes after the last finished session.
+- Frame files are uploaded every 10 sessions and then deleted locally.
+- On one GPU it would take about 1.5 h, mostly downloading.
+- `--shard i/n` splits the sessions across machines; once all shards are done, run `--assemble-only`.
+
 **Run cost on 4 CPU cores:**
 - Whisper-small takes about 1 s per segment, because it pads every input to 30 s.
 - HuBERT takes about 0.25 s per segment.
 - eGeMAPS and the text models take under a minute in total.
 
-## Open decisions (before the full run)
+## Open decisions
 - Small vs. extended DAIC-WOZ.
 - The minimum segment duration and merge rule, given that short turns are dropped more often for depressed participants.
 - Duration weighting when pooling segments to sessions (`session_pool(weight_by_duration=...)` supports both).

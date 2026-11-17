@@ -41,6 +41,7 @@ Layer 0 is the pre-transformer output and layers 1–12 are the transformer bloc
 - Segments longer than 30 s are split at the quietest 10 ms frame in the 3 s before the limit. Transcript words are divided between the pieces in proportion to time (`text_split_approx = true`).
 - Audio is 16 kHz mono, with each model's own feature extractor and no extra amplitude normalization.
 - Sessions with documented problems are excluded: 318, 321, 341, 342, 362, 373, 394, 398, 444, 451, 458, 460, 480.
+- A session whose source zip on the DAIC-WOZ server can't be read is skipped and listed under `config.failed_sessions` in `manifest.json`. In the full run, that was session 440.
 
 ## Loading
 
