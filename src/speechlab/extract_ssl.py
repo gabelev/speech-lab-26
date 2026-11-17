@@ -49,6 +49,17 @@ class SSLExtractor:
         return torch.stack([h[0] for h in hs])
 
 
+    @torch.inference_mode()
+    def hidden_states_batch(self, wavs: list[np.ndarray]) -> list[torch.Tensor]:
+        """Whisper only: every input is padded to 30 s regardless, so batching changes
+        nothing but throughput. Returns one [13, T_i, 768] tensor per input."""
+        if self.kind != "whisper":
+            return [self.hidden_states(w) for w in wavs]
+        feats = self.fe(wavs, sampling_rate=SR, return_tensors="pt").input_features
+        hs = torch.stack(self.model(feats, output_hidden_states=True).hidden_states, dim=1)  # B,13,1500,D
+        return [hs[i, :, : whisper_valid_frames(len(w))] for i, w in enumerate(wavs)]
+
+
 def pool(hs: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
     """Mean and (population) std over frames -> two [13, 768] float32 arrays."""
     return hs.mean(dim=1).numpy(), hs.std(dim=1, unbiased=False).numpy()

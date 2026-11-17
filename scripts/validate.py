@@ -39,9 +39,17 @@ check.failed = False
 
 
 def loso_auc(X: np.ndarray, y: np.ndarray, groups: np.ndarray) -> float:
+    """Session-grouped CV: leave-one-session-out for <= 10 sessions, else 5 grouped folds."""
     scores = np.zeros(len(y))
-    for g in np.unique(groups):
-        tr, te = groups != g, groups == g
+    uniq = np.unique(groups)
+    if len(uniq) <= 10:
+        folds = [(groups != g, groups == g) for g in uniq]
+    else:
+        from sklearn.model_selection import GroupKFold
+
+        folds = [(np.isin(np.arange(len(y)), tr), np.isin(np.arange(len(y)), te))
+                 for tr, te in GroupKFold(n_splits=5).split(X, y, groups)]
+    for tr, te in folds:
         clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.01, max_iter=2000))
         clf.fit(X[tr], y[tr])
         scores[te] = clf.predict_proba(X[te])[:, 1]
@@ -52,11 +60,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?")
     ap.add_argument("--hf")
+    ap.add_argument("--frame-sessions", type=int, default=3,
+                    help="with --hf: download frame files for only this many sessions (-1 = all)")
     args = ap.parse_args()
     if args.hf:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import list_repo_files, snapshot_download
 
-        root = Path(snapshot_download(args.hf, repo_type="dataset"))
+        frames = sorted(f for f in list_repo_files(args.hf, repo_type="dataset") if "/frames/" in f)
+        sessions = sorted({Path(f).stem for f in frames})
+        keep = sessions if args.frame_sessions < 0 else sessions[: args.frame_sessions]
+        allow = [f for f in list_repo_files(args.hf, repo_type="dataset")
+                 if "/frames/" not in f or Path(f).stem in keep]
+        root = Path(snapshot_download(args.hf, repo_type="dataset", allow_patterns=allow))
     else:
         root = Path(args.root)
     print(f"validating {root}")
@@ -85,9 +100,13 @@ def main() -> None:
     # frames vs pooled mean for one segment per session
     man = json.loads((root / "manifest.json").read_text())
     layers = man["config"]["models"]["frame_layers"]
+    frame_sessions = {int(p.stem) for p in (root / "whisper_small" / "frames").glob("*.safetensors")}
+    check(len(frame_sessions) > 0, f"frame files present locally for {len(frame_sessions)} sessions")
     for model in ["whisper_small", "hubert_base"]:
         worst = 0.0
         for sess, sid in seg.groupby("session_id").segment_id.first().items():
+            if sess not in frame_sessions:
+                continue
             fr = load_file(root / model / "frames" / f"{sess}.safetensors")
             n_expected = int((seg.session_id == sess).sum()) * len(layers)
             if len(fr) != n_expected:
@@ -100,14 +119,14 @@ def main() -> None:
         check(worst < 0.02, f"{model}: frame mean matches pooled mean (max rel err {worst:.4f})")
 
     # frame counts: whisper trims to ceil(dur*50); hubert ~ dur*50 (conv receptive field)
-    sid = ids[0]
-    d = seg.dur_s.iloc[0]
-    wf = load_file(root / "whisper_small/frames" / f"{seg.session_id.iloc[0]}.safetensors")[f"{sid}/layer_00"]
-    hf = load_file(root / "hubert_base/frames" / f"{seg.session_id.iloc[0]}.safetensors")[f"{sid}/layer_00"]
+    first = seg[seg.session_id.isin(frame_sessions)].iloc[0]
+    sid, d = first.segment_id, first.dur_s
+    wf = load_file(root / "whisper_small/frames" / f"{first.session_id}.safetensors")[f"{sid}/layer_00"]
+    hf = load_file(root / "hubert_base/frames" / f"{first.session_id}.safetensors")[f"{sid}/layer_00"]
     check(abs(wf.shape[0] - d * 50) <= 1 and abs(hf.shape[0] - d * 50) <= 1,
           f"frame counts for {d:.2f}s: whisper {wf.shape[0]}, hubert {hf.shape[0]}")
 
-    print("\nsmoke-test probe: LOSO segment-level AUC for PHQ8_Binary (n_sessions=%d)" % seg.session_id.nunique())
+    print("\nprobe: session-grouped CV segment-level AUC for PHQ8_Binary (n_sessions=%d)" % seg.session_id.nunique())
     y, g = seg.phq8_binary.values, seg.session_id.values
     for rel in LAYERED:
         aucs = []

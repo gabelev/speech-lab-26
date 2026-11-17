@@ -1,0 +1,36 @@
+# Full run: every labelled DAIC-WOZ session minus documented problem sessions (180 sessions).
+dataset:
+  base_url: https://dcapswoz.ict.usc.edu/wwwdaicwoz/
+  data_dir: data/daicwoz
+  sessions: all
+  exclude: [318, 321, 341, 342, 362, 373, 394, 398, 444, 451, 458, 460, 480]
+  keep_wav: false        # delete each session's WAV after extraction to save disk
+
+segmentation:
+  min_dur_s: 1.0
+  merge_max_gap_s: 0.5
+  max_dur_s: 30.0
+  split_search_s: 3.0
+
+models:
+  whisper_small:
+    id: openai/whisper-small
+    revision: 973afd24965f72e36ca33b3055d56a652f456b4d   # same as the sample
+  hubert_base:
+    id: facebook/hubert-base-ls960
+    revision: dba3bb02fda4248b6e082697eee756de8fe8aa8a
+  frame_layers: [0, 6, 12]
+
+text_models:
+  roberta_base:
+    id: FacebookAI/roberta-base
+    revision: e2da8e2f811d1448a5b465c236feacd80ffbac7b
+  mpnet:
+    id: sentence-transformers/all-mpnet-base-v2
+    revision: e8c3b32edf5434bc2275fc9bab85f82640a19130
+
+output:
+  dir: outputs/full
+  hf_repo: GenerationGenerative/daic-woz-embeddings
+  private: true
+  frames_upload_every: 10   # upload + delete local frame files every N sessions

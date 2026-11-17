@@ -1,4 +1,4 @@
-"""Read the embedding dataset written by ``scripts/run_sample.py``.
+"""Read the embedding dataset written by ``scripts/run_pipeline.py``.
 
 Works on a local output folder or on the private HF repo (downloaded on first use and
 cached by ``huggingface_hub``). Every table shares the ``segment_id`` key and is stored

@@ -1,19 +1,19 @@
 ---
 license: other
 license_name: daic-woz-eula
-pretty_name: DAIC-WOZ segment embeddings (sample)
+pretty_name: "{{TITLE}}"
 tags: [speech, depression, embeddings, whisper, hubert, egemaps]
 ---
 
-# DAIC-WOZ segment embeddings: sample
+# {{TITLE}}
 
 > **Restricted data.** These files are derived from the DAIC-WOZ corpus (USC ICT) and include
 > participant transcripts and PHQ-8 labels. Access is limited to people who have signed the
 > DAIC-WOZ EULA. Do not redistribute, make this repo public, or copy the files to other locations.
 
-This is a test batch for the RFC *"DAIC-WOZ Embedding Generation"*. It covers {{N_SEGMENTS}} participant segments from
-sessions {{SESSIONS}}: 2 per official split (train, dev, test), with 1 depressed (PHQ-8 ≥ 10) and 1 not depressed in each pair.
-It exists to exercise the pipeline and probe code. It is far too small for meaningful results.
+Segment-level embeddings for the RFC *"DAIC-WOZ Embedding Generation"*. {{SUMMARY}}
+
+Code: https://github.com/gabelev/speech-lab-26. The easiest way to read these files is `speechlab.load.EmbeddingDataset`.
 
 ## Join key
 
@@ -48,7 +48,7 @@ Layer 0 is the pre-transformer output and layers 1–12 are the transformer bloc
 from huggingface_hub import snapshot_download
 import pandas as pd, numpy as np, pyarrow.parquet as pq
 
-root = snapshot_download("GenerationGenerative/daic-woz-embeddings-sample", repo_type="dataset")
+root = snapshot_download("{{REPO}}", repo_type="dataset", ignore_patterns=["*/frames/*"])  # drop ignore_patterns for frames
 seg = pd.read_parquet(f"{root}/segments.parquet")
 t = pq.read_table(f"{root}/hubert_base/pooled.parquet", columns=["segment_id", "mean_l09"])
 X = np.stack(t.column("mean_l09").to_numpy(zero_copy_only=False)).astype(np.float32)  # [N, 768]

@@ -142,7 +142,7 @@ The dev pair's genders are flipped relative to train and test, so gender isn't c
 
 ## How the data is processed
 
-Run end to end with `scripts/run_sample.py --config configs/sample.yaml [--push]`. All parameters are in the config.
+Run end to end with `scripts/run_pipeline.py --config configs/sample.yaml [--push]`. All parameters are in the config.
 
 ### 1. Source data
 - Each session comes from the DAIC-WOZ server as `<id>_P.zip`. Only `<id>_AUDIO.wav` (16 kHz mono) and `<id>_TRANSCRIPT.csv` are kept, and the zip is deleted.
@@ -179,7 +179,7 @@ openSMILE `eGeMAPSv02` functionals (88 features) on exactly the same segment aud
 - **RoBERTa-base:** all 13 hidden states, mean-pooled over non-special tokens. This mirrors the speech models' layer structure, so layer-wise probe curves can be compared.
 - **all-mpnet-base-v2:** a sentence embedding, as a strong text baseline.
 
-### 6. Publishing (`scripts/run_sample.py --push`)
+### 6. Publishing (`scripts/run_pipeline.py --push`)
 Writes the dataset folder, `manifest.json` and a dataset card. It creates the HF dataset repo as **private** and refuses to upload unless the repo is private.
 
 ---
@@ -195,7 +195,7 @@ src/speechlab/
   extract_other.py           eGeMAPS, RoBERTa, mpnet
   store.py                   parquet writers (one column per layer)
   load.py                    EmbeddingDataset reader
-scripts/run_sample.py        end-to-end pipeline (cached per session, resumable)
+scripts/run_pipeline.py        end-to-end pipeline (cached per session, resumable)
 scripts/validate.py          consistency checks + smoke probe
 scripts/dataset_card.md      README template for the HF repo
 examples/read_embeddings.py  loading example
@@ -213,7 +213,7 @@ pytest
 ```
 
 ```bash
-python scripts/run_sample.py --config configs/sample.yaml           # about 11 min on 4 CPU cores
+python scripts/run_pipeline.py --config configs/sample.yaml           # about 11 min on 4 CPU cores
 ```
 
 ```bash
@@ -221,7 +221,7 @@ python scripts/validate.py outputs/sample/hf
 ```
 
 ```bash
-python scripts/run_sample.py --config configs/sample.yaml --push    # needs an HF write token
+python scripts/run_pipeline.py --config configs/sample.yaml --push    # needs an HF write token
 ```
 
 **Run cost on 4 CPU cores:**
