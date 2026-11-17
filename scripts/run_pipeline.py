@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from importlib.metadata import version
@@ -271,9 +272,18 @@ def main() -> None:
         fut = pool.submit(fetch_with_retry, base_url, data_dir, pending[0])
         t_start, n_segs = time.time(), 0
         for j, s in enumerate(pending):
-            fut.result()
+            try:
+                fut.result()
+                fetch_err = None
+            except zipfile.BadZipFile as e:  # the server's copy is broken: record it and move on
+                fetch_err = e
             if j + 1 < len(pending):
                 fut = pool.submit(fetch_with_retry, base_url, data_dir, pending[j + 1])
+            if fetch_err is not None:
+                (cache / "failed").mkdir(exist_ok=True)
+                (cache / "failed" / f"{s}.json").write_text(json.dumps({"reason": f"download: {fetch_err!r}"}))
+                log(f"session {s} skipped: source zip unreadable ({fetch_err!r})")
+                continue
             t0 = time.time()
             n = process_session(s, cfg, ex, labels, data_dir, cache, hf_dir, revs)
             n_segs += n
@@ -292,6 +302,12 @@ def main() -> None:
     if args.shard:
         log("shard finished; run with --assemble-only once all shards are done")
         return
+    failed = {int(p.stem): json.loads(p.read_text())["reason"] for p in sorted((cache / "failed").glob("*.json"))
+              if not (cache / "done" / p.name).exists()}
+    if failed:
+        log(f"skipping {len(failed)} sessions whose source data is broken: {sorted(failed)}")
+        sessions = [s for s in sessions if s not in failed]
+        cfg["failed_sessions"] = {str(k): v for k, v in failed.items()}
     missing = [s for s in sessions if not (cache / "done" / f"{s}.json").exists()]
     if missing:
         log(f"not assembling: {len(missing)} sessions unfinished, e.g. {missing[:5]}")
