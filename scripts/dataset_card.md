@@ -2,18 +2,33 @@
 license: other
 license_name: daic-woz-eula
 pretty_name: "{{TITLE}}"
-tags: [speech, depression, embeddings, whisper, hubert, egemaps]
+tags: [speech, depression, embeddings, whisper, hubert, egemaps, audio]
+configs:
+  - config_name: segments
+    default: true
+    data_files: segments.parquet
+  - config_name: audio_clips
+    data_files: audio/segments/*.parquet
 ---
 
 # {{TITLE}}
 
-> **Restricted data.** These files are derived from the DAIC-WOZ corpus (USC ICT) and include
-> participant transcripts and PHQ-8 labels. Access is limited to people who have signed the
-> DAIC-WOZ EULA. Do not redistribute, make this repo public, or copy the files to other locations.
+> **Restricted data.** These files are derived from the DAIC-WOZ corpus (USC ICT). They include participant
+> audio, transcripts and PHQ-8 labels. Access is limited to people who have signed the DAIC-WOZ EULA.
+> Do not redistribute these files, make this repo public, or copy them anywhere else.
 
-Segment-level embeddings for the RFC *"DAIC-WOZ Embedding Generation"*. {{SUMMARY}}
+Segment-level embeddings and audio for the RFC *"DAIC-WOZ Embedding Generation"*. {{SUMMARY}}
 
 Code: https://github.com/gabelev/speech-lab-26. The easiest way to read these files is `speechlab.load.EmbeddingDataset`.
+
+## Versions
+
+Versions are git tags on this repo. Load one with `revision=`.
+
+| tag | short turns (< 1 s) | audio | notes |
+|---|---|---|---|
+| `v2.0` (current `main`) | merged into the nearest participant turn (spliced across Ellie's lines when needed) | full sessions (FLAC) + one clip per segment | new columns: `intervals`, `n_short_merged`, `spliced` |
+| `v1.0` | dropped (24% of transcript rows) | none | |
 
 ## Join key
 
@@ -23,25 +38,30 @@ Every table has `segment_id = "{session}_{turn_idx:04d}_{sub_idx}"`. All tables 
 
 | path | contents |
 |---|---|
-| `segments.parquet` | `segment_id, session_id, turn_idx, sub_idx, start_s, end_s, dur_s, text, merged_from, text_split_approx, split, phq8_score, phq8_binary, gender` |
+| `segments.parquet` | `segment_id, session_id, turn_idx, sub_idx, start_s, end_s, dur_s, intervals, text, merged_from, n_short_merged, spliced, text_split_approx, split, phq8_score, phq8_binary, gender` |
 | `whisper_small/pooled.parquet` | `mean_l00..mean_l12`, `std_l00..std_l12`: 768-d float16 per layer. Whisper-small **encoder** with padding frames trimmed |
 | `hubert_base/pooled.parquet` | same layout, HuBERT Base (ls960), batch size 1 |
 | `{whisper_small,hubert_base}/frames/<session>.safetensors` | frame-level float16 `[T, 768]` for layers 0, 6, 12, key `"<segment_id>/layer_XX"`, 50 frames/s |
 | `egemaps/functionals.parquet` | 88 eGeMAPSv02 functionals (openSMILE) on the same segment audio |
 | `text/roberta_base.parquet` | `mean_l00..mean_l12`: RoBERTa-base token-mean per hidden state over the segment transcript |
 | `text/mpnet.parquet` | `emb`: all-mpnet-base-v2 sentence embedding (float32) |
-| `manifest.json` | model ids and commit shas, code commit, full config, library versions, per-session segmentation stats |
+| `audio/sessions/<session>.flac` | the whole interview (participant and Ellie), 16 kHz mono, lossless |
+| `audio/segments/<session>.parquet` | one FLAC clip per segment (`audio`), exactly the audio the models saw, plus `segment_id, session_id, dur_s, spliced, text`. You can play these in the dataset viewer's `audio_clips` config |
+| `manifest.json` | dataset version, model ids and commit shas, code commit, full config, library versions, per-session segmentation stats |
 
 Layer 0 is the pre-transformer output and layers 1–12 are the transformer blocks. For the Whisper encoder, layer 12 comes after the final layer norm.
 
-## Segmentation
+## Segmentation (v2)
 
-- Participant turns are taken from the transcript timestamps. Ellie's turns and any audio before her first line are dropped.
-- Turns shorter than 1 s are merged into an adjacent participant turn when the gap is ≤ 0.5 s and no Ellie line falls between them. Otherwise they are dropped. Merges are listed in `merged_from` (transcript row indices).
-- Segments longer than 30 s are split at the quietest 10 ms frame in the 3 s before the limit. Transcript words are divided between the pieces in proportion to time (`text_split_approx = true`).
+- Participant turns are taken from the transcript timestamps. Ellie's turns are dropped. The only participant rows dropped are setup chatter before Ellie's first line and empty rows.
+- **No short turn is dropped.** A turn shorter than 1 s is merged into the participant turn nearest in time, repeating until the turn is at least 1 s long:
+  - **No Ellie line between them:** the two become one contiguous span, including the pause between them.
+  - **Ellie line between them:** the short turn's audio is **spliced** on as a separate interval, and Ellie's audio is left out.
+  - `intervals` lists the pieces of each segment in session time, and `dur_s` is their total. `n_short_merged` counts the short transcript rows folded in, and `spliced` marks segments that contain a join.
+- Segments with more than 30 s of speech are split at the quietest 10 ms frame in the 3 s before the limit, measured on the spliced audio. Transcript words are divided between the pieces in proportion to time (`text_split_approx = true`).
 - Audio is 16 kHz mono, with each model's own feature extractor and no extra amplitude normalization.
 - Sessions with documented problems are excluded: 318, 321, 341, 342, 362, 373, 394, 398, 444, 451, 458, 460, 480.
-- A session whose source zip on the DAIC-WOZ server can't be read is skipped and listed under `config.failed_sessions` in `manifest.json`. In the full run, that was session 440.
+- A session whose source zip on the DAIC-WOZ server can't be read is skipped and listed under `config.failed_sessions` in `manifest.json`. In the full run, that was session 440, whose zip is truncated on the server.
 
 ## Loading
 
@@ -49,10 +69,13 @@ Layer 0 is the pre-transformer output and layers 1–12 are the transformer bloc
 from huggingface_hub import snapshot_download
 import pandas as pd, numpy as np, pyarrow.parquet as pq
 
-root = snapshot_download("{{REPO}}", repo_type="dataset", ignore_patterns=["*/frames/*"])  # drop ignore_patterns for frames
+root = snapshot_download("{{REPO}}", repo_type="dataset", revision="v2.0",
+                         ignore_patterns=["*/frames/*", "audio/*"])  # drop patterns to get frames / audio
 seg = pd.read_parquet(f"{root}/segments.parquet")
 t = pq.read_table(f"{root}/hubert_base/pooled.parquet", columns=["segment_id", "mean_l09"])
 X = np.stack(t.column("mean_l09").to_numpy(zero_copy_only=False)).astype(np.float32)  # [N, 768]
 ```
+
+Audio clips also load with `datasets`: `load_dataset("{{REPO}}", "audio_clips", revision="v2.0")`.
 
 `gender` keeps the source coding from the DAIC-WOZ split CSVs (0/1).

@@ -6,7 +6,7 @@ in the same row order as ``segments.parquet``.
 
     from speechlab.load import EmbeddingDataset
 
-    ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings-sample")
+    ds = EmbeddingDataset.from_hub("GenerationGenerative/daic-woz-embeddings", frames=False)
     seg = ds.segments()                                   # metadata DataFrame
     X = ds.pooled("hubert_base", layer=9)                 # [N, 768] float32 (mean)
     S = ds.pooled("whisper_small", layer=4, stat="std")   # [N, 768]
@@ -16,6 +16,11 @@ in the same row order as ``segments.parquet``.
     T = ds.text("roberta_base", layer=12)                 # [N, 768]
     M = ds.text("mpnet")                                  # [N, 768]
     Xs, ys, sessions = ds.session_pool(X)                 # one row per session
+    wav, sr = ds.audio("303_0000_0")                      # segment clip (needs audio=True)
+    full, sr = ds.session_audio(303)                      # whole interview incl. Ellie
+
+Dataset versions are git tags on the HF repo: ``revision="v1.0"`` (short turns dropped,
+no audio) or ``revision="v2.0"`` (short turns merged, audio included).
 """
 
 from __future__ import annotations
@@ -45,15 +50,18 @@ class EmbeddingDataset:
             raise FileNotFoundError(f"{self.root} does not look like an embedding dataset folder")
 
     @classmethod
-    def from_hub(cls, repo_id: str = "GenerationGenerative/daic-woz-embeddings-sample", revision: str | None = None,
-                 frames: bool = True) -> "EmbeddingDataset":
+    def from_hub(cls, repo_id: str = "GenerationGenerative/daic-woz-embeddings", revision: str | None = None,
+                 frames: bool = True, audio: bool = False) -> "EmbeddingDataset":
         """Download (or reuse the cache of) the HF dataset repo. Needs a token with read
         access to the private repo (``huggingface-cli login`` or ``HF_TOKEN``).
-        Pass ``frames=False`` to skip the frame-level files (most of the download)."""
+
+        ``frames=False`` skips the frame-level files (most of the download). ``audio=True``
+        also fetches the audio (v2.0 and later: full sessions as FLAC plus per-segment clips).
+        ``revision`` picks a dataset version tag, e.g. ``"v1.0"`` or ``"v2.0"``."""
         from huggingface_hub import snapshot_download
 
-        ignore = None if frames else ["*/frames/*"]
-        return cls(snapshot_download(repo_id, repo_type="dataset", revision=revision, ignore_patterns=ignore))
+        ignore = ([] if frames else ["*/frames/*"]) + ([] if audio else ["audio/*"])
+        return cls(snapshot_download(repo_id, repo_type="dataset", revision=revision, ignore_patterns=ignore or None))
 
     # ---- metadata ---------------------------------------------------------------
     @cached_property
@@ -105,6 +113,26 @@ class EmbeddingDataset:
                 if k.endswith(suffix):
                     out[k[: -len(suffix)]] = f.get_tensor(k).astype(np.float32)
         return out
+
+    # ---- audio (dataset v2.0+) ------------------------------------------------------
+    def audio(self, segment_id: str) -> tuple[np.ndarray, int]:
+        """One segment's audio clip, exactly what the models saw: float32 mono, 16 kHz.
+        Spliced segments (``spliced`` column) are concatenations of several intervals."""
+        import io
+
+        import soundfile as sf
+
+        session = segment_id.split("_")[0]
+        t = pq.read_table(self.root / "audio" / "segments" / f"{session}.parquet", columns=["segment_id", "audio"])
+        ids = t.column("segment_id").to_pylist()
+        clip = t.column("audio")[ids.index(segment_id)].as_py()
+        return sf.read(io.BytesIO(clip["bytes"]), dtype="float32")
+
+    def session_audio(self, session_id: int) -> tuple[np.ndarray, int]:
+        """The whole interview recording (participant and Ellie), float32 mono, 16 kHz."""
+        import soundfile as sf
+
+        return sf.read(self.root / "audio" / "sessions" / f"{session_id}.flac", dtype="float32")
 
     # ---- eGeMAPS and text ---------------------------------------------------------
     def egemaps(self) -> pd.DataFrame:

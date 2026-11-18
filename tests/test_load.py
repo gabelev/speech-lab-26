@@ -47,3 +47,30 @@ def test_session_pool_weighted(tmp_path):
     Xs, ys, sessions = ds.session_pool(X, weight_by_duration=True)
     np.testing.assert_allclose(Xs[:, 0], [0.75, 2.5])  # (0*1 + 1*3)/4, (2+3)/2
     assert list(ys) == [0, 1] and list(sessions) == [300, 301]
+
+
+def test_audio_roundtrip(tmp_path):
+    import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import soundfile as sf
+
+    _make(tmp_path)
+    rng = np.random.default_rng(0)
+    full = (rng.normal(0, 0.1, 16000 * 3).clip(-1, 1) * 32767).astype(np.int16) / 32768.0
+    (tmp_path / "audio" / "sessions").mkdir(parents=True)
+    (tmp_path / "audio" / "segments").mkdir(parents=True)
+    sf.write(tmp_path / "audio" / "sessions" / "300.flac", full, 16000, subtype="PCM_16")
+    clips = []
+    for a, b in [(0, 16000), (16000, 48000)]:
+        buf = io.BytesIO()
+        sf.write(buf, full[a:b], 16000, format="FLAC", subtype="PCM_16")
+        clips.append({"bytes": buf.getvalue(), "path": "x.flac"})
+    pq.write_table(pa.table({"segment_id": ["300_0000_0", "300_0001_0"], "audio": clips}),
+                   tmp_path / "audio" / "segments" / "300.parquet")
+    ds = EmbeddingDataset(tmp_path)
+    wav, sr = ds.audio("300_0001_0")
+    assert sr == 16000 and np.array_equal(wav, full[16000:48000].astype(np.float32))
+    whole, _ = ds.session_audio(300)
+    assert np.array_equal(whole, full.astype(np.float32))

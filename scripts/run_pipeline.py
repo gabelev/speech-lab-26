@@ -8,9 +8,13 @@ so memory and disk stay flat however many sessions there are. Every finished ses
 leaves a marker in <output.dir>/cache/done/, and a rerun skips those, so an interrupted
 run resumes where it stopped.
 
-With ``output.frames_upload_every: N`` and ``--push``, frame-level files are uploaded to
-the HF repo every N sessions and deleted locally. Otherwise they stay in the output
-folder and are uploaded with everything else at the end.
+With ``output.frames_upload_every: N`` and ``--push``, frame-level files and audio are
+uploaded to the HF repo every N sessions and deleted locally. Otherwise they stay in the
+output folder and are uploaded with everything else at the end.
+
+``output.hf_revision`` (e.g. ``v2``) sends every upload to that branch of the repo instead
+of ``main``, so a release can be staged without touching what users load by default;
+``scripts/promote_release.py`` then copies it onto ``main`` and tags it.
 
 ``--shard i/n`` processes only every n-th session (offset i), for parallel runs that share
 an output repo; run once more without --shard (and with --assemble-only) to build the
@@ -22,6 +26,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -35,6 +40,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import soundfile as sf
 import torch
 import yaml
@@ -48,8 +55,19 @@ from speechlab import daicwoz, store  # noqa: E402
 from speechlab.segment import Segment, segment_session, slice_audio  # noqa: E402
 
 SSL_KINDS = {"whisper_small": "whisper", "hubert_base": "hubert"}
-SEG_COLS = ["segment_id", "session_id", "turn_idx", "sub_idx", "start_s", "end_s", "dur_s", "text",
-            "merged_from", "text_split_approx", "split", "phq8_score", "phq8_binary", "gender"]
+SEG_COLS = ["segment_id", "session_id", "turn_idx", "sub_idx", "start_s", "end_s", "dur_s", "intervals", "text",
+            "merged_from", "n_short_merged", "spliced", "text_split_approx",
+            "split", "phq8_score", "phq8_binary", "gender"]
+SR = 16000
+# HF `datasets` feature metadata so the hub viewer (and datasets.load_dataset) treat the
+# column as playable audio.
+CLIP_FEATURES = {"info": {"features": {
+    "segment_id": {"dtype": "string", "_type": "Value"},
+    "session_id": {"dtype": "int64", "_type": "Value"},
+    "dur_s": {"dtype": "float64", "_type": "Value"},
+    "spliced": {"dtype": "bool", "_type": "Value"},
+    "text": {"dtype": "string", "_type": "Value"},
+    "audio": {"sampling_rate": SR, "_type": "Audio"}}}}
 
 
 def log(msg: str) -> None:
@@ -76,6 +94,30 @@ def load_audio(path: Path) -> np.ndarray:
         wav = wav.mean(axis=1)
     assert sr == 16000, f"{path}: expected 16 kHz, got {sr}"
     return wav
+
+
+def flac_bytes(wav: np.ndarray) -> bytes:
+    buf = io.BytesIO()
+    sf.write(buf, wav, SR, format="FLAC", subtype="PCM_16")
+    return buf.getvalue()
+
+
+def write_audio(s: int, audio: np.ndarray, segs: list[Segment], hf_dir: Path) -> None:
+    """Full session as FLAC plus one FLAC clip per segment (participant speech only)."""
+    sdir, cdir = hf_dir / "audio" / "sessions", hf_dir / "audio" / "segments"
+    sdir.mkdir(parents=True, exist_ok=True)
+    cdir.mkdir(parents=True, exist_ok=True)
+    sf.write(sdir / f"{s}.flac", audio, SR, format="FLAC", subtype="PCM_16")
+    clips = [{"bytes": flac_bytes(slice_audio(audio, seg)), "path": f"{seg.segment_id}.flac"} for seg in segs]
+    table = pa.table({
+        "segment_id": [seg.segment_id for seg in segs],
+        "session_id": pa.array([s] * len(segs), pa.int64()),
+        "dur_s": [round(seg.dur_s, 3) for seg in segs],
+        "spliced": [seg.spliced for seg in segs],
+        "text": [seg.text for seg in segs],
+        "audio": pa.array(clips, pa.struct([("bytes", pa.binary()), ("path", pa.string())])),
+    }).replace_schema_metadata({"huggingface": json.dumps(CLIP_FEATURES)})
+    pq.write_table(table, cdir / f"{s}.parquet")
 
 
 def fetch_with_retry(base_url: str, data_dir: Path, s: int, tries: int = 4) -> None:
@@ -111,7 +153,8 @@ def process_session(s: int, cfg: dict, ex: Extractors, labels: pd.DataFrame, dat
     rows = []
     for seg in segs:
         d = asdict(seg)
-        d.update(segment_id=seg.segment_id, dur_s=round(seg.dur_s, 3), split=lab["split"],
+        d.update(segment_id=seg.segment_id, start_s=seg.start_s, end_s=seg.end_s, dur_s=round(seg.dur_s, 3),
+                 split=lab["split"],
                  phq8_score=int(lab["phq8_score"]), phq8_binary=int(lab["phq8_binary"]), gender=int(lab["gender"]))
         rows.append(d)
     (cache / "segments").mkdir(parents=True, exist_ok=True)
@@ -148,6 +191,10 @@ def process_session(s: int, cfg: dict, ex: Extractors, labels: pd.DataFrame, dat
     np.save(cache / "text" / f"{s}_mpnet.npy", ex.mpnet(texts))
     timing["egemaps_text"] = round(time.time() - t0, 1)
 
+    t0 = time.time()
+    write_audio(s, audio, segs, hf_dir)
+    timing["audio"] = round(time.time() - t0, 1)
+
     st["timing_s"] = timing
     (cache / "done").mkdir(parents=True, exist_ok=True)
     (cache / "done" / f"{s}.json").write_text(json.dumps(st))  # written last = session complete
@@ -159,18 +206,23 @@ def ensure_private_repo(api: HfApi, repo: str, private: bool) -> None:
     assert api.repo_info(repo, repo_type="dataset").private, f"{repo} is not private; refusing to upload"
 
 
-def upload_frames(api: HfApi, repo: str, hf_dir: Path, ledger: Path) -> None:
-    files = sorted(hf_dir.glob("*/frames/*.safetensors"))
+INCREMENTAL = ["*/frames/*.safetensors", "audio/sessions/*.flac", "audio/segments/*.parquet"]
+
+
+def upload_frames(api: HfApi, repo: str, hf_dir: Path, ledger: Path, revision: str | None = None) -> None:
+    """Upload per-session frame and audio files, then delete them locally."""
+    files = sorted(p for pat in INCREMENTAL for p in hf_dir.glob(pat))
     if not files:
         return
-    api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=str(hf_dir),
-                      allow_patterns=["*/frames/*.safetensors"],
-                      commit_message=f"Frame-level outputs for {len(files) // 2} sessions")
+    n_sessions = len({p.stem for p in files})
+    api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=str(hf_dir), revision=revision,
+                      allow_patterns=INCREMENTAL,
+                      commit_message=f"Frame-level outputs and audio for {n_sessions} sessions")
     with ledger.open("a") as f:
         for p in files:
             f.write(str(p.relative_to(hf_dir)) + "\n")
             p.unlink()
-    log(f"uploaded {len(files)} frame files")
+    log(f"uploaded {len(files)} frame/audio files")
 
 
 def assemble(cfg: dict, cfg_text: str, sessions: list[int], cache: Path, hf_dir: Path, revs: dict) -> int:
@@ -207,6 +259,7 @@ def assemble(cfg: dict, cfg_text: str, sessions: list[int], cache: Path, hf_dir:
         "sessions": sessions,
         "segmentation_stats": stats,
         "n_segments": len(ids),
+        "dataset_version": cfg["output"].get("dataset_version"),
     }
     (hf_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
@@ -261,8 +314,11 @@ def main() -> None:
     repo = ocfg["hf_repo"]
     every = ocfg.get("frames_upload_every")
     ledger = cache / "uploaded_frames.txt"
+    revision = ocfg.get("hf_revision")
     if api:
         ensure_private_repo(api, repo, ocfg["private"])
+        if revision:
+            api.create_branch(repo, branch=revision, repo_type="dataset", exist_ok=True)
 
     pending = [s for s in todo if not (cache / "done" / f"{s}.json").exists()]
     log(f"{len(todo) - len(pending)} already done, {len(pending)} to process")
@@ -294,10 +350,10 @@ def main() -> None:
             log(f"session {s} ({j + 1}/{len(pending)}): {n} segments in {time.time() - t0:.0f}s; "
                 f"elapsed {el / 3600:.2f}h, eta {eta / 3600:.2f}h")
             if api and every and (j + 1) % every == 0:
-                upload_frames(api, repo, hf_dir, ledger)
+                upload_frames(api, repo, hf_dir, ledger, revision)
         pool.shutdown()
         if api and every:
-            upload_frames(api, repo, hf_dir, ledger)
+            upload_frames(api, repo, hf_dir, ledger, revision)
 
     if args.shard:
         log("shard finished; run with --assemble-only once all shards are done")
@@ -315,9 +371,9 @@ def main() -> None:
     n = assemble(cfg, cfg_text, sessions, cache, hf_dir, revs)
     log(f"assembled {hf_dir} ({n} segments, {len(sessions)} sessions)")
     if api:
-        api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=str(hf_dir),
+        api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=str(hf_dir), revision=revision,
                           commit_message=f"Embeddings for {len(sessions)} sessions")
-        log(f"pushed to https://huggingface.co/datasets/{repo}")
+        log(f"pushed to https://huggingface.co/datasets/{repo}" + (f" (branch {revision})" if revision else ""))
 
 
 if __name__ == "__main__":

@@ -60,18 +60,19 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?")
     ap.add_argument("--hf")
+    ap.add_argument("--revision", default=None, help="with --hf: branch or version tag, e.g. v2.0")
     ap.add_argument("--frame-sessions", type=int, default=3,
-                    help="with --hf: download frame files for only this many sessions (-1 = all)")
+                    help="with --hf: download frame and audio files for only this many sessions (-1 = all)")
     args = ap.parse_args()
     if args.hf:
         from huggingface_hub import list_repo_files, snapshot_download
 
-        frames = sorted(f for f in list_repo_files(args.hf, repo_type="dataset") if "/frames/" in f)
-        sessions = sorted({Path(f).stem for f in frames})
+        files = list_repo_files(args.hf, repo_type="dataset", revision=args.revision)
+        per_session = lambda f: "/frames/" in f or f.startswith("audio/")  # noqa: E731
+        sessions = sorted({Path(f).stem for f in files if "/frames/" in f})
         keep = sessions if args.frame_sessions < 0 else sessions[: args.frame_sessions]
-        allow = [f for f in list_repo_files(args.hf, repo_type="dataset")
-                 if "/frames/" not in f or Path(f).stem in keep]
-        root = Path(snapshot_download(args.hf, repo_type="dataset", allow_patterns=allow))
+        allow = [f for f in files if not per_session(f) or Path(f).stem in keep]
+        root = Path(snapshot_download(args.hf, repo_type="dataset", revision=args.revision, allow_patterns=allow))
     else:
         root = Path(args.root)
     print(f"validating {root}")
@@ -125,6 +126,45 @@ def main() -> None:
     hf = load_file(root / "hubert_base/frames" / f"{first.session_id}.safetensors")[f"{sid}/layer_00"]
     check(abs(wf.shape[0] - d * 50) <= 1 and abs(hf.shape[0] - d * 50) <= 1,
           f"frame counts for {d:.2f}s: whisper {wf.shape[0]}, hubert {hf.shape[0]}")
+
+    # v2: every participant row after the interview starts is in exactly one segment
+    if "intervals" in seg.columns:
+        bad = []
+        for sess, g in seg.groupby("session_id"):
+            st = man["segmentation_stats"][str(sess)]
+            rows = [r for turn in g.groupby("turn_idx").merged_from.first() for r in turn]
+            if len(rows) != len(set(rows)) or len(rows) != st["participant_rows"] - len(st["rows_dropped"]):
+                bad.append(sess)
+        check(not bad, f"every participant row (after the interview starts) is in exactly one segment; bad: {bad[:5]}")
+        dur = seg.intervals.map(lambda iv: sum(e - s for s, e in iv))
+        check(bool(np.allclose(dur, seg.dur_s, atol=2e-3)), "dur_s equals the total length of the intervals")
+        check(bool((seg.spliced == (seg.intervals.map(len) > 1)).all()), "spliced is set exactly when a segment has >1 interval")
+        n_short = man["config"]["segmentation"]["min_dur_s"]
+        print(f"  info {int((seg.dur_s < n_short).sum())} segments shorter than {n_short} s "
+              f"(sessions whose only turn is short); {int(seg.spliced.sum())} spliced")
+
+    # audio: clip == model input length, and == the matching slice of the session FLAC
+    clip_dir = root / "audio" / "segments"
+    if clip_dir.exists():
+        import io
+
+        import soundfile as sf
+
+        worst, n = 0, 0
+        for p in sorted(clip_dir.glob("*.parquet")):
+            sess = int(p.stem)
+            full, sr = sf.read(root / "audio" / "sessions" / f"{sess}.flac", dtype="float32")
+            t = pq.read_table(p)
+            g = seg[seg.session_id == sess].set_index("segment_id")
+            check(t.column("segment_id").to_pylist() == g.index.tolist(), f"audio/segments/{sess}: rows match segments")
+            for sid, clip in zip(t.column("segment_id").to_pylist(), t.column("audio").to_pylist()):
+                wav, _ = sf.read(io.BytesIO(clip["bytes"]), dtype="float32")
+                ref = np.concatenate([full[int(round(a * sr)): int(round(b * sr))] for a, b in g.at[sid, "intervals"]])
+                worst = max(worst, abs(len(wav) - len(ref)))
+                if len(wav) == len(ref) and not np.array_equal(wav, ref):
+                    worst = max(worst, 10 ** 6)
+                n += 1
+        check(worst == 0, f"audio: {n} clips identical to their intervals cut from the session FLAC")
 
     print("\nprobe: session-grouped CV segment-level AUC for PHQ8_Binary (n_sessions=%d)" % seg.session_id.nunique())
     y, g = seg.phq8_binary.values, seg.session_id.values

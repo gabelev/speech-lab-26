@@ -8,7 +8,7 @@ dataset:
 
 segmentation:
   min_dur_s: 1.0
-  merge_max_gap_s: 0.5
+  short_turns: merge
   max_dur_s: 30.0
   split_search_s: 3.0
 
@@ -30,7 +30,9 @@ text_models:
     revision: e8c3b32edf5434bc2275fc9bab85f82640a19130
 
 output:
-  dir: outputs/full
+  dir: outputs/full_v2
   hf_repo: GenerationGenerative/daic-woz-embeddings
   private: true
-  frames_upload_every: 10   # upload + delete local frame files every N sessions
+  dataset_version: "2.0"
+  hf_revision: v2          # stage on this branch; scripts/promote_release.py moves it to main
+  frames_upload_every: 10   # upload + delete local frame and audio files every N sessions
