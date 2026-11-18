@@ -31,7 +31,7 @@ from sklearn.linear_model import LogisticRegression, Ridge  # noqa: E402
 from sklearn.metrics import mean_squared_error, roc_auc_score  # noqa: E402
 from sklearn.model_selection import GridSearchCV, GroupKFold, StratifiedKFold, cross_val_predict  # noqa: E402
 from sklearn.pipeline import make_pipeline  # noqa: E402
-from sklearn.preprocessing import StandardScaler  # noqa: E402
+from sklearn.preprocessing import FunctionTransformer, StandardScaler  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -238,7 +238,8 @@ def layer_geometry(X: np.ndarray, sess: np.ndarray, standardize: bool = False) -
 
 
 def duration_r2(X: np.ndarray, y: np.ndarray, groups: np.ndarray) -> float:
-    pred = cross_val_predict(make_pipeline(StandardScaler(), Ridge(alpha=100.0)), X, y,
+    clip = FunctionTransformer(lambda z: np.clip(z, -5, 5))  # eGeMAPS has extreme outliers
+    pred = cross_val_predict(make_pipeline(StandardScaler(), clip, Ridge(alpha=100.0)), X, y,
                              groups=groups, cv=GroupKFold(5))
     return float(1 - ((y - pred) ** 2).sum() / ((y - y.mean()) ** 2).sum())
 
@@ -307,6 +308,7 @@ def main() -> None:
     sessions = [int(s) for s in man["sessions"]]
     lab = seg.groupby("session_id")[["split", "phq8_score", "phq8_binary", "gender"]].first().loc[sessions]
     R: dict = {"dataset_version": man.get("dataset_version"), "n_sessions": len(sessions), "n_segments": len(seg)}
+    T: dict[str, list[dict]] = {}  # tidy tables for the report artifact (data/*.json)
     md: list[str] = []
     title = f"DAIC-WOZ embeddings v{man.get('dataset_version') or '?'}: descriptive statistics"
     md += [f"# {title}", "",
@@ -325,8 +327,14 @@ def main() -> None:
                                   phq8_median=("phq8_score", "median"))
     ct = ct.loc[[s for s in ["train", "dev", "test"] if s in ct.index]]
     R["corpus"] = ct.reset_index().to_dict("records")
+    T["corpus"] = [{"split": i, "sessions": int(r.sessions), "depressed": int(r.depressed), "gender_1": int(r.gender_1),
+                    "phq8_mean": round(float(r.phq8_mean), 2), "phq8_median": float(r.phq8_median)}
+                   for i, r in ct.iterrows()]
+    T["phq8_hist"] = [{"score": int(k), "sessions": int((lab.phq8_score == k).sum()),
+                       "depressed": int(k >= 10)} for k in range(25)]
     md += [md_table(["split", "sessions", "PHQ-8 ≥ 10", "gender = 1", "PHQ-8 mean", "PHQ-8 median"],
-                    [[i, r.sessions, r.depressed, r.gender_1, fmt(r.phq8_mean, 1), fmt(r.phq8_median, 0)]
+                    [[i, int(r.sessions), int(r.depressed), int(r.gender_1), fmt(r.phq8_mean, 1),
+                      fmt(r.phq8_median, 0)]
                      for i, r in ct.iterrows()]), ""]
     xt = pd.crosstab(lab.gender, lab.phq8_binary)
     R["gender_by_label"] = {f"gender_{g}": {f"phq8_binary_{b}": int(xt.loc[g, b]) for b in xt.columns} for g in xt.index}
@@ -364,24 +372,24 @@ def main() -> None:
     }
 
     def group_table(df: pd.DataFrame, names: dict, key: str) -> None:
-        rows, ps = [], []
+        recs = []
         for c, nm in names.items():
             if c not in df:
                 continue
-            v = df[c]
-            a = v[lab.loc[v.index, "phq8_binary"] == 0].values.astype(float)
-            b = v[lab.loc[v.index, "phq8_binary"] == 1].values.astype(float)
+            v = df[c].astype(float)
+            a = v[lab.loc[v.index, "phq8_binary"] == 0].values
+            b = v[lab.loc[v.index, "phq8_binary"] == 1].values
             p, r = mw(a, b)
-            ps.append(p)
-            rows.append([nm, fmt(np.nanmedian(v)), f"{fmt(np.nanpercentile(v, 5))} – {fmt(np.nanpercentile(v, 95))}",
-                         fmt(np.nanmedian(a)), fmt(np.nanmedian(b)), fmt(r), p, c])
-        q = bh(ps)
-        R[key] = {}
-        out = []
-        for row, qq in zip(rows, q):
-            R[key][row[-1]] = {"median_all": float(np.nanmedian(df[row[-1]])), "median_not_depressed": row[3],
-                               "median_depressed": row[4], "r": row[5], "p": row[6], "q": qq}
-            out.append(row[:6] + [fmt(row[6], 3), fmt(qq, 3)])
+            recs.append({"metric_id": c, "metric": nm, "median": float(np.nanmedian(v)),
+                         "p5": float(np.nanpercentile(v, 5)), "p95": float(np.nanpercentile(v, 95)),
+                         "median_not_depressed": float(np.nanmedian(a)) if len(a) else None,
+                         "median_depressed": float(np.nanmedian(b)) if len(b) else None, "r": r, "p": p})
+        for rec, qq in zip(recs, bh([x["p"] for x in recs])):
+            rec["q"] = qq
+        T[key] = recs
+        R[key] = {x["metric_id"]: x for x in recs}
+        out = [[x["metric"], fmt(x["median"]), f"{fmt(x['p5'])} – {fmt(x['p95'])}", fmt(x["median_not_depressed"]),
+                fmt(x["median_depressed"]), fmt(x["r"]), fmt(x["p"], 3), fmt(x["q"], 3)] for x in recs]
         md.extend([md_table(["metric (per session)", "median", "5th–95th pct", "median PHQ<10", "median PHQ≥10",
                              "r", "p", "q"], out), ""])
 
@@ -395,9 +403,10 @@ def main() -> None:
         for gval in (0, 1):
             v = ts.loc[lab.index[lab.phq8_binary == gval], c].dropna()
             jitter = rng.uniform(-0.12, 0.12, len(v))
-            ax.scatter(np.full(len(v), gval) + jitter, v, s=10, color=GROUP_COLORS[gval], alpha=0.6, linewidths=0)
+            ax.scatter(np.full(len(v), gval) + jitter, v, s=10, color=GROUP_COLORS[gval], alpha=0.6, linewidths=0,
+                       zorder=3)
             if len(v):
-                ax.hlines(np.median(v), gval - 0.28, gval + 0.28, color=INK, lw=2)
+                ax.hlines(np.median(v), gval - 0.3, gval + 0.3, color=INK, lw=1.5, zorder=2)
         ax.set_xticks([0, 1], [GROUP_NAMES[0], GROUP_NAMES[1]])
         ax.set_xlim(-0.6, 1.6)
         ax.set_title(labels_[c], fontsize=8.5)
@@ -470,15 +479,35 @@ def main() -> None:
         v1seg = pd.read_parquet(hf_hub_download(args.hf, "segments.parquet", repo_type="dataset", revision=args.v1))
         v1seg = v1seg[v1seg.session_id.isin(sessions)]
         R["segments_v1"] = {"n": len(v1seg), "dur_s": pctl(v1seg.dur_s), "speech_h": float(v1seg.dur_s.sum() / 3600)}
-        md += [md_table(["", f"v{man.get('dataset_version')}", f"previous ({args.v1})"],
-                        [[r[0], r[1], ""] for r in rows[:1]] +
-                        [["segment length median (s)", fmt(seg.dur_s.median()), fmt(v1seg.dur_s.median())],
-                         ["participant speech in segments (h)", fmt(seg.dur_s.sum() / 3600, 1),
-                          fmt(v1seg.dur_s.sum() / 3600, 1)],
-                         ["segments", fmt(len(seg)), fmt(len(v1seg))]]), ""]
+        md += [f"**Compared with {args.v1}** (the same sessions):", "",
+               md_table(["", f"v{man.get('dataset_version')}", args.v1],
+                        [["segments", fmt(len(seg)), fmt(len(v1seg))],
+                         ["segment length median (s)", fmt(seg.dur_s.median()), fmt(v1seg.dur_s.median())],
+                         ["segments shorter than 2 s", fmt(int((seg.dur_s < 2).sum())), fmt(int((v1seg.dur_s < 2).sum()))],
+                         ["participant speech in segments (h)", fmt(seg.dur_s.sum() / 3600, 2),
+                          fmt(v1seg.dur_s.sum() / 3600, 2)]]), ""]
     md += [md_table(["", "value"], rows), ""]
-    fig, ax = plt.subplots(figsize=(6.4, 2.8))
     bins = np.logspace(np.log10(0.2), np.log10(30), 50)
+    h2 = np.histogram(seg.dur_s.clip(0.2, 30), bins)[0]
+    hr = np.histogram(np.clip(turn_durs, 0.2, 30), bins)[0]
+    h1 = np.histogram(v1seg.dur_s.clip(0.2, 30), bins)[0] if v1seg is not None else np.zeros_like(h2)
+    T["length_hist"] = [{"bin": i, "from_s": round(float(bins[i]), 3), "to_s": round(float(bins[i + 1]), 3),
+                         "v2_segments": int(h2[i]), "v1_segments": int(h1[i]), "transcript_rows": int(hr[i])}
+                        for i in range(len(bins) - 1)]
+    cmp_rows = [("segments", len(seg), len(v1seg) if v1seg is not None else None),
+                ("median_s", float(seg.dur_s.median()), float(v1seg.dur_s.median()) if v1seg is not None else None),
+                ("under_2s", int((seg.dur_s < 2).sum()), int((v1seg.dur_s < 2).sum()) if v1seg is not None else None),
+                ("speech_h", float(seg.dur_s.sum() / 3600), float(v1seg.dur_s.sum() / 3600) if v1seg is not None else None),
+                ("per_session_median", float(per_sess.median()),
+                 float(v1seg.groupby("session_id").size().median()) if v1seg is not None else None)]
+    T["segments_compare"] = [{"measure": a, "v2": b, "v1": c} for a, b, c in cmp_rows]
+    T["segmentation_totals"] = [{"measure": k, "count": v} for k, v in agg.items()] + [
+        {"measure": "segments_spliced", "count": int(seg.spliced.sum()) if "spliced" in seg else 0},
+        {"measure": "segments_with_short_turns", "count": int((seg.n_short_merged > 0).sum()) if "n_short_merged" in seg else 0},
+        {"measure": "segments_under_1s", "count": int((seg.dur_s < 1).sum())},
+        {"measure": "transcript_rows_under_1s", "count": int((turn_durs < 1).sum())},
+        {"measure": "transcript_rows_total", "count": int(len(turn_durs))}]
+    fig, ax = plt.subplots(figsize=(6.4, 2.8))
     ax.hist(seg.dur_s, bins=bins, histtype="step", color=BLUE, lw=2, label=f"v{man.get('dataset_version')}")
     if v1seg is not None:
         ax.hist(v1seg.dur_s, bins=bins, histtype="step", color=ORANGE, lw=2, label=args.v1)
@@ -523,6 +552,9 @@ def main() -> None:
         g["gender_auc"] = gender_auc(ds.session_pool(Xd, weight_by_duration=True)[0], lab.gender.values.astype(int))
         geo[name] = [g]
     R["embedding_geometry"] = geo
+    T["geometry"] = [{"model": m, "layer": (k if m in MODEL_NAMES else None),
+                      **{c: (None if isinstance(v, float) and np.isnan(v) else round(float(v), 4)) for c, v in g.items()}}
+                     for m in geo for k, g in enumerate(geo[m])]
     keys = [("between_session_share", "between-session share"), ("anisotropy", "anisotropy"), ("pca90", "PCA-90"),
             ("duration_r2", "duration R²"), ("gender_auc", "gender AUC"), ("norm", "mean norm")]
     for m in ("whisper_small", "hubert_base", "roberta_base"):
@@ -553,6 +585,8 @@ def main() -> None:
         for j in range(i + 1, len(names)):
             C[i, j] = C[j, i] = cka(vecs[names[i]][sub].astype(np.float64), vecs[names[j]][sub].astype(np.float64))
     R["cka"] = {"order": [f"{m}:{k}" for m, k in names], "matrix": C.round(4).tolist()}
+    T["cka"] = [{"model_a": names[i][0], "layer_a": names[i][1], "model_b": names[j][0], "layer_b": names[j][1],
+                 "cka": round(float(C[i, j]), 4)} for i in range(len(names)) for j in range(len(names))]
     best = {}
     for a, b in [("whisper_small", "hubert_base"), ("whisper_small", "roberta_base"), ("hubert_base", "roberta_base")]:
         ia = [i for i, n in enumerate(names) if n[0] == a]
@@ -600,6 +634,12 @@ def main() -> None:
         for n, X in others.items():
             probes[n] = [session_probe(ds.session_pool(np.nan_to_num(X), weight_by_duration=True)[0], lab, rng)]
         R["probes"] = probes
+        T["probes"] = [{"model": m, "layer": (k if m in MODEL_NAMES else None),
+                        "auc_dev": round(p["dev"]["auc"], 4), "auc_test": round(p["test"]["auc"], 4),
+                        "auc_test_lo": round(p["test"]["auc_lo"], 4), "auc_test_hi": round(p["test"]["auc_hi"], 4),
+                        "rmse_test": round(p["test"]["rmse"], 3), "rmse_test_mean_only": round(p["test"]["rmse_baseline"], 3),
+                        "rmse_dev": round(p["dev"]["rmse"], 3), "rmse_dev_mean_only": round(p["dev"]["rmse_baseline"], 3)}
+                       for m in probes for k, p in enumerate(probes[m])]
         rows = []
         for m in ("whisper_small", "hubert_base", "roberta_base"):
             for k in range(13):
@@ -679,6 +719,9 @@ def main() -> None:
             sessions=("session", "nunique"), frames=("frames", "sum"), norm=("norm", "mean"),
             adjacent_cos=("adjacent_cos", "mean")).reset_index()
         R["frames"] = fr.to_dict("records")
+        T["frames"] = [{"model": r.model, "layer": int(r.layer), "sessions": int(r.sessions), "frames": int(r.frames),
+                        "mean_norm": round(float(r.norm), 3), "adjacent_cos": round(float(r.adjacent_cos), 4)}
+                       for r in fr.itertuples()]
         md += ["### Frame-level outputs", "",
                f"These are from the first {fr.sessions.max()} sessions. **Adjacent cos** is the mean cosine similarity "
                "between consecutive 20 ms frames, a measure of how smooth each layer is over time.", "",
@@ -689,7 +732,25 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "STATS.md").write_text("\n".join(md) + "\n")
     (args.out / "stats.json").write_text(json.dumps(R, indent=1, default=lambda o: o.item() if hasattr(o, "item") else str(o)))
-    print(f"wrote {args.out}/STATS.md")
+    ddir = args.out / "data"
+    ddir.mkdir(exist_ok=True)
+    code = Path(__file__).read_text()
+    src = (f"{args.hf or args.root} at {args.revision or 'local'}; dataset version {man.get('dataset_version')}; "
+           f"code {man['code_commit'][:7]}")
+    def clean(v):
+        if isinstance(v, dict):
+            return {k: clean(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [clean(x) for x in v]
+        if hasattr(v, "item"):
+            v = v.item()
+        return None if isinstance(v, float) and not np.isfinite(v) else v
+
+    for name, rows_ in T.items():
+        (ddir / f"{name}.json").write_text(json.dumps({"rows": clean(rows_), "meta": [
+            {"label": "analyze.py", "value": code, "type": "code", "lang": "python"},
+            {"label": "Input", "value": src}]}, default=lambda o: o.item() if hasattr(o, "item") else str(o)))
+    print(f"wrote {args.out}/STATS.md and {len(T)} tables in {ddir}")
 
 
 if __name__ == "__main__":
