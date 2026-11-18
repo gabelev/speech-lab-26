@@ -1,0 +1,463 @@
+<meta name="dash-one-writer">
+<style>
+  .ds { display: grid; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); color: var(--color-fg); }
+  .ds h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+  .ds h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; text-wrap: balance; }
+  .ds h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .ds p { margin: 0; max-width: 70ch; line-height: 1.5; }
+  .ds .ds-muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .ds .ds-lede { font-size: var(--cds-font-size-body); }
+  .ds section { display: grid; gap: var(--cds-gap-md); min-width: 0; }
+  .ds .ds-grid2 { display: grid; gap: var(--cds-gap-lg); grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  .ds .ds-grid4 { display: grid; gap: var(--cds-gap-lg); grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+  .ds .ds-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); min-width: 0; }
+  .ds .ds-chart { position: relative; min-height: 200px; min-width: 0; }
+  .ds .ds-chart.ds-tall { min-height: 320px; }
+  .ds .ds-chart svg { display: block; overflow: visible; }
+  .ds .ds-chart text { fill: var(--cds-text-secondary); font-size: var(--cds-font-size-caption); }
+  .ds .ds-chart .domain, .ds .ds-chart .tick line { stroke: var(--cds-chart-axis); }
+  .ds .ds-chart .ds-gridline { stroke: var(--cds-chart-grid); }
+  .ds .ds-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); box-shadow: var(--cds-shadow-popover); border-radius: var(--cds-radius); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); color: var(--color-fg); white-space: nowrap; z-index: 2; }
+  .ds .ds-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .ds .ds-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .ds .ds-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .ds .ds-legend i.ds-dash { background: none !important; border-top: 2px dashed var(--color-fg-muted); height: 0; }
+  .ds .ds-tablewrap { overflow-x: auto; min-width: 0; }
+  .ds table { border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; width: 100%; }
+  .ds th, .ds td { padding: 4px 8px; border-bottom: 1px solid var(--color-border-line); text-align: right; white-space: nowrap; }
+  .ds th:first-child, .ds td:first-child { text-align: left; white-space: normal; }
+  .ds th { color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); }
+  .ds td.ds-sig { color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+  .ds .ds-note { border-left: 2px solid var(--color-border-line); padding-left: var(--cds-pad-md); }
+  .ds details summary { cursor: pointer; color: var(--color-fg-muted); }
+  .ds details ul { margin: var(--cds-gap-sm) 0 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 75ch; }
+</style>
+
+<div class="ds">
+  <header class="ds-head" id="top">
+    <h1>DAIC-WOZ Embeddings v2</h1>
+    <p class="ds-lede">
+      Release v2 has <b data-draw="v-segments" data-source="segments_compare" data-field="v2" data-where="measure=segments">—</b> segments
+      from <b data-draw="v-sessions" data-source="corpus_total" data-field="sessions" data-row="0">—</b> interviews.
+      On the test split, an interview-level probe for PHQ-8 ≥ 10 reaches AUC
+      <b data-draw="v-best-text" data-source="best_probe" data-field="auc_test" data-where="family=text">—</b>
+      with the best text features and
+      <b data-draw="v-best-speech" data-source="best_probe" data-field="auc_test" data-where="family=speech">—</b>
+      with the best speech layer.
+    </p>
+    <p class="ds-muted">Descriptive statistics for the dataset at <code>GenerationGenerative/daic-woz-embeddings</code>, revision v2.0. Every figure is an aggregate. The page holds no transcript text and no per-interview labels. Group comparisons are associations on a small sample, not findings.</p>
+  </header>
+
+  <section id="corpus">
+    <h2>Corpus and labels</h2>
+    <div class="ds-grid2">
+      <div class="ds-card">
+        <h3>Interviews per split</h3>
+        <div class="ds-tablewrap">
+          <table data-source="corpus" data-row-key="split">
+            <thead><tr><th data-field="split">Split</th><th data-field="sessions">Interviews</th><th data-field="depressed">PHQ-8 ≥ 10</th><th data-field="gender_1">Gender = 1</th><th data-field="phq8_mean">PHQ-8 mean</th><th data-field="phq8_median">PHQ-8 median</th></tr></thead>
+            <tbody data-draw="t-corpus"></tbody>
+          </table>
+        </div>
+        <p class="ds-muted">Gender keeps the 0/1 coding of the DAIC-WOZ split files.</p>
+      </div>
+      <div class="ds-card" id="phq-hist">
+        <h3>PHQ-8 score per interview</h3>
+        <div class="ds-legend"><span><i class="ds-c0"></i>PHQ-8 &lt; 10</span><span><i class="ds-c1"></i>PHQ-8 ≥ 10</span></div>
+        <div class="ds-chart" data-draw="c-phq" data-source="phq8_hist"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="segments">
+    <h2>Segments: v2 against v1</h2>
+    <p>v2 keeps every short participant turn. A turn under 1 s joins the nearest participant turn, and its audio is spliced in when one of Ellie's lines sits between them. v1 dropped these turns.</p>
+    <div class="ds-grid2">
+      <div class="ds-card">
+        <h3>Release comparison</h3>
+        <div class="ds-tablewrap">
+          <table data-source="segments_compare" data-row-key="measure">
+            <thead><tr><th data-field="measure">Measure</th><th data-field="v2">v2</th><th data-field="v1">v1</th></tr></thead>
+            <tbody data-draw="t-compare"></tbody>
+          </table>
+        </div>
+        <h3>Where transcript rows went</h3>
+        <div class="ds-tablewrap">
+          <table data-source="segmentation_totals" data-row-key="measure">
+            <thead><tr><th data-field="measure">Count</th><th data-field="count">v2</th></tr></thead>
+            <tbody data-draw="t-totals"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="ds-card" id="length-hist">
+        <h3>Length distribution (log scale)</h3>
+        <div class="ds-legend"><span><i class="ds-c0"></i>v2 segments</span><span><i class="ds-c1"></i>v1 segments</span><span><i class="ds-dash"></i>raw transcript rows</span></div>
+        <div class="ds-chart ds-tall" data-draw="c-lengths" data-source="length_hist"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="transcripts">
+    <h2>Raw transcripts by group</h2>
+    <p>Per-interview measures from the original transcript rows, from Ellie's first line on. <b>r</b> is the rank-biserial effect size, where a positive value means higher in the PHQ-8 ≥ 10 group. <b>q</b> is the Benjamini–Hochberg adjusted p-value across this table. Rows with q &lt; 0.05 are bold in the chart.</p>
+    <div class="ds-grid2">
+      <div class="ds-card">
+        <h3>Effect size by measure</h3>
+        <div class="ds-chart ds-tall" data-draw="c-effects" data-source="transcript_by_group"></div>
+      </div>
+      <div class="ds-card ds-tablewrap">
+        <table data-source="transcript_by_group" data-row-key="metric_id">
+          <thead><tr><th data-field="metric">Measure (per interview)</th><th data-field="median">Median</th><th data-field="median_not_depressed">PHQ &lt; 10</th><th data-field="median_depressed">PHQ ≥ 10</th><th data-field="r">r</th><th data-field="q">q</th></tr></thead>
+          <tbody data-draw="t-transcripts"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="audio">
+    <h2>Raw audio</h2>
+    <p>Levels from 25 ms frames of each full recording. Participant speech is the energy inside segment intervals, and the noise floor is the 10th percentile of frame energy. The SNR estimate is their difference.</p>
+    <div class="ds-card ds-tablewrap">
+      <table data-source="audio_by_group" data-row-key="metric_id">
+        <thead><tr><th data-field="metric">Measure (per interview)</th><th data-field="median">Median</th><th data-field="p5">5th pct</th><th data-field="p95">95th pct</th><th data-field="median_not_depressed">PHQ &lt; 10</th><th data-field="median_depressed">PHQ ≥ 10</th><th data-field="r">r</th><th data-field="q">q</th></tr></thead>
+        <tbody data-draw="t-audio"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="geometry">
+    <h2>Embedding geometry by layer</h2>
+    <p>Computed on mean-pooled segment vectors. A high <b>between-interview share</b> means a layer mostly encodes who is speaking and the recording. <b>Duration R²</b> is how well a ridge probe recovers log segment length, with interview-grouped 5-fold CV.</p>
+    <div class="ds-legend"><span><i class="ds-c0"></i>Whisper-small encoder</span><span><i class="ds-c1"></i>HuBERT Base</span><span><i class="ds-c2"></i>RoBERTa-base</span></div>
+    <div class="ds-grid4">
+      <div class="ds-card" id="geo-between"><h3>Between-interview variance share</h3><div class="ds-chart" data-draw="c-geo" data-metric="between_session_share" data-source="geometry"></div></div>
+      <div class="ds-card" id="geo-aniso"><h3>Anisotropy (mean cosine)</h3><div class="ds-chart" data-draw="c-geo" data-metric="anisotropy" data-source="geometry"></div></div>
+      <div class="ds-card" id="geo-pca"><h3>Components for 90% variance</h3><div class="ds-chart" data-draw="c-geo" data-metric="pca90" data-source="geometry"></div></div>
+      <div class="ds-card" id="geo-dur"><h3>Duration R²</h3><div class="ds-chart" data-draw="c-geo" data-metric="duration_r2" data-source="geometry"></div></div>
+    </div>
+    <p class="ds-note">Whisper's mean-pooled vectors predict segment length almost perfectly. Whisper adds fixed positional embeddings, so averaging over the first T frames encodes T. Control for duration when probing Whisper layers.</p>
+  </section>
+
+  <section id="probes">
+    <h2>PHQ-8 probes at the interview level</h2>
+    <p>Segment vectors are averaged per interview, weighted by duration. A logistic regression is trained on train and scored on dev, then trained on train + dev and scored on test. Its regularization is picked by 5-fold CV inside the training interviews. The shaded band is a 95% bootstrap interval over test interviews.</p>
+    <div class="ds-legend"><span><i class="ds-c0"></i>Whisper-small encoder</span><span><i class="ds-c1"></i>HuBERT Base</span><span><i class="ds-c2"></i>RoBERTa-base</span><span><i class="ds-dash"></i>mpnet and eGeMAPS</span></div>
+    <div class="ds-grid2">
+      <div class="ds-card" id="probe-test"><h3>AUC on test</h3><div class="ds-chart ds-tall" data-draw="c-probe" data-split="test" data-source="probes"></div></div>
+      <div class="ds-card" id="probe-dev"><h3>AUC on dev</h3><div class="ds-chart ds-tall" data-draw="c-probe" data-split="dev" data-source="probes"></div></div>
+    </div>
+  </section>
+
+  <section id="cka">
+    <h2>Which layers look alike</h2>
+    <p>Linear CKA between every pair of layers, on a random sample of segments. Darker cells are more similar. Blocks run layer 0 to 12 for Whisper, HuBERT and RoBERTa.</p>
+    <div class="ds-card"><div class="ds-chart ds-tall" data-draw="c-cka" data-source="cka"></div></div>
+  </section>
+
+  <section id="egemaps">
+    <h2>eGeMAPS voice measures by group</h2>
+    <div class="ds-card ds-tablewrap">
+      <table data-source="egemaps_by_group" data-row-key="metric_id">
+        <thead><tr><th data-field="metric">Measure (duration-weighted per interview)</th><th data-field="median">Median</th><th data-field="median_not_depressed">PHQ &lt; 10</th><th data-field="median_depressed">PHQ ≥ 10</th><th data-field="r">r</th><th data-field="q">q</th></tr></thead>
+        <tbody data-draw="t-egemaps"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="frames">
+    <h2>Frame-level outputs</h2>
+    <p>Stored frames for layers 0, 6 and 12 of both speech models, summarized over a few interviews. Adjacent cos is the mean cosine similarity between consecutive 20 ms frames, so higher means smoother over time.</p>
+    <div class="ds-card ds-tablewrap">
+      <table data-source="frames" data-row-key="model,layer">
+        <thead><tr><th data-field="model">Model</th><th data-field="layer">Layer</th><th data-field="sessions">Interviews</th><th data-field="frames">Frames</th><th data-field="mean_norm">Mean norm</th><th data-field="adjacent_cos">Adjacent cos</th></tr></thead>
+        <tbody data-draw="t-frames"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <details id="definitions">
+    <summary>Definitions and method notes</summary>
+    <ul>
+      <li>Segments are participant speech only. Ellie's lines are never in a segment's audio. Setup chatter before Ellie's first line is the only participant speech left out.</li>
+      <li>Fillers are um, uh, mm, mhm, hmm and similar tokens. Hedges are phrases such as "I don't know", "kind of", "maybe" and "I think". Both are counted per 100 words.</li>
+      <li>Anisotropy is the mean pairwise cosine similarity of segment vectors, where 0 means directions are spread evenly.</li>
+      <li>eGeMAPS features are z-scored before the geometry measures.</li>
+      <li>The code that made every table is in the Sources panel and in <code>scripts/analyze.py</code> in the speech-lab-26 repository.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+  window.DS = (() => {
+    const MODELS = ['whisper_small', 'hubert_base', 'roberta_base'];
+    const NAMES = {whisper_small: 'Whisper-small encoder', hubert_base: 'HuBERT Base', roberta_base: 'RoBERTa-base', mpnet: 'mpnet', egemaps: 'eGeMAPS'};
+    const MEASURES = {
+      segments: 'Segments', median_s: 'Median segment length (s)', under_2s: 'Segments under 2 s',
+      speech_h: 'Participant speech in segments (h)', per_session_median: 'Segments per interview (median)',
+      participant_rows: 'Participant transcript rows', rows_pre_interview: 'Rows before the interview (left out)',
+      rows_nonpositive: 'Empty rows (left out)', rows_short: 'Rows under 1 s (all kept)', rows_merged: 'Rows merged into another turn',
+      turns_kept: 'Turns after merging', turns_spliced: 'Turns spliced across an Ellie line', turns_split: 'Turns split at 30 s',
+      segments_spliced: 'Segments containing a splice', segments_with_short_turns: 'Segments containing a short turn',
+      segments_under_1s: 'Segments under 1 s', transcript_rows_under_1s: 'Transcript rows under 1 s',
+      transcript_rows_total: 'Transcript rows with positive length', turns_still_short: 'Turns still under 1 s'
+    };
+    const color = (i) => dash.colors[i % dash.colors.length];
+    const num = (v, d = 2) => (v == null || Number.isNaN(+v)) ? '–' : (+v).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+    const smart = (v) => {
+      if (v == null) return '–';
+      const a = Math.abs(+v);
+      if (Number.isInteger(+v)) return (+v).toLocaleString('en-US');
+      return num(v, a >= 100 ? 1 : a >= 1 ? 2 : 3);
+    };
+    const pfmt = (v) => v == null ? '–' : (+v < 0.001 ? '<0.001' : num(v, 3));
+    const placeholder = (el, st) => {
+      el.replaceChildren();
+      if (st === 'error') { const p = document.createElement('p'); p.className = 'ds-muted'; p.textContent = 'Failed to load'; el.append(p); }
+    };
+    function tip(el) {
+      let t = el.querySelector(':scope > .ds-tip');
+      if (!t) { t = document.createElement('div'); t.className = 'ds-tip'; t.hidden = true; el.append(t); }
+      return {
+        show(ev, lines) {
+          t.replaceChildren(...lines.map((l) => { const d = document.createElement('div'); d.textContent = l; return d; }));
+          t.hidden = false;
+          const box = el.getBoundingClientRect();
+          let x = ev.clientX - box.left + 12, y = ev.clientY - box.top + 12;
+          if (x + t.offsetWidth > box.width) x = Math.max(0, ev.clientX - box.left - t.offsetWidth - 12);
+          t.style.left = x + 'px'; t.style.top = y + 'px';
+        },
+        hide() { t.hidden = true; }
+      };
+    }
+    function svgIn(el, h, label) {
+      const w = Math.max(240, el.clientWidth || 320);
+      const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${w} ${h}`).attr('role', 'img').attr('aria-label', label);
+      return {svg, w};
+    }
+    function rows(tbody, data, key, cells) {
+      tbody.replaceChildren(...data.map((r) => {
+        const tr = document.createElement('tr');
+        tr.dataset.key = key(r);
+        for (const c of cells(r)) {
+          const td = document.createElement('td');
+          if (typeof c === 'object' && c) { td.textContent = c.text; if (c.cls) td.className = c.cls; } else td.textContent = c;
+          tr.append(td);
+        }
+        return tr;
+      }));
+    }
+    function lineChart(el, {series, xDomain, yDomain, label, height = 200, xTicks, xTickValues, yFmt = (v) => smart(v), refs = [], bands = [], xLog = false, xFmt}) {
+      el.replaceChildren();
+      const {svg, w} = svgIn(el, height, label);
+      const allY = series.flatMap((s) => s.points.map((p) => p.y)).concat(refs.map((r) => r.y)).concat(bands.flatMap((b) => b.points.flatMap((p) => [p.lo, p.hi]))).filter((v) => v != null);
+      const y = d3.scaleLinear().domain(yDomain || d3.extent(allY)).nice().range([height - 24, 8]);
+      const probe = svg.append('text').text(yFmt(y.domain()[1]));
+      const ml = Math.max(28, probe.node().getComputedTextLength ? probe.node().getComputedTextLength() + 10 : 36);
+      probe.remove();
+      const mr = refs.length ? 56 : 10;
+      const x = (xLog ? d3.scaleLog() : d3.scaleLinear()).domain(xDomain).range([ml, w - mr]);
+      const xAxis = d3.axisBottom(x).tickFormat(xFmt || null);
+      if (xTickValues) xAxis.tickValues(xTickValues.filter((v) => (w - ml - mr) > 300 || [0.2, 1, 5, 30].includes(v))); else xAxis.ticks(xTicks || 5);
+      svg.append('g').attr('transform', `translate(0,${height - 24})`).call(xAxis);
+      svg.append('g').attr('transform', `translate(${ml},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(yFmt))
+        .call((g) => g.selectAll('.tick line').clone().attr('x2', w - ml - mr).attr('class', 'ds-gridline'));
+      for (const b of bands) {
+        svg.append('path').datum(b.points.filter((p) => p.lo != null)).attr('fill', b.color).attr('fill-opacity', 0.15)
+          .attr('d', d3.area().x((p) => x(p.x)).y0((p) => y(p.lo)).y1((p) => y(p.hi)));
+      }
+      for (const r of refs) {
+        svg.append('line').attr('x1', ml).attr('x2', w - mr).attr('y1', y(r.y)).attr('y2', y(r.y))
+          .style('stroke', 'var(--color-fg-muted)').attr('stroke-dasharray', r.dash || '4 3').attr('stroke-width', 1);
+        if (r.label) svg.append('text').attr('x', w - mr + 4).attr('y', y(r.y)).attr('dy', '0.32em').text(r.label);
+      }
+      for (const s of series) {
+        const pts = s.points.filter((p) => p.y != null);
+        svg.append('path').datum(pts).attr('fill', 'none').style('stroke', s.color).attr('stroke-width', s.width || 2)
+          .attr('stroke-dasharray', s.dash || null).attr('d', d3.line().x((p) => x(p.x)).y((p) => y(p.y)));
+        if (s.dots !== false) svg.append('g').selectAll('circle').data(pts).join('circle')
+          .attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 2.5).style('fill', s.color);
+      }
+      const t = tip(el);
+      const xs = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))].sort((a, b) => a - b);
+      const guide = svg.append('line').attr('y1', 8).attr('y2', height - 24).style('stroke', 'var(--cds-chart-reference)').attr('hidden', true);
+      svg.append('rect').attr('x', ml).attr('y', 0).attr('width', w - ml - mr).attr('height', height - 24).attr('fill', 'transparent')
+        .on('pointermove', (ev) => {
+          const [mx] = d3.pointer(ev);
+          const xv = x.invert(mx);
+          const near = xs.reduce((a, b) => Math.abs(b - xv) < Math.abs(a - xv) ? b : a, xs[0]);
+          guide.attr('x1', x(near)).attr('x2', x(near)).attr('hidden', null);
+          t.show(ev, [(xFmt ? xFmt(near) : `layer ${near}`)].concat(series.map((s) => {
+            const p = s.points.find((q) => q.x === near);
+            return `${s.name}: ${p && p.y != null ? yFmt(p.y) : '–'}${p && p.lo != null ? ` (${yFmt(p.lo)}–${yFmt(p.hi)})` : ''}`;
+          })));
+        })
+        .on('pointerleave', () => { t.hide(); guide.attr('hidden', true); });
+    }
+    return {MODELS, NAMES, MEASURES, color, num, smart, pfmt, placeholder, tip, svgIn, rows, lineChart};
+  })();
+
+  // ---- calcs -------------------------------------------------------------------
+  dash.calc('corpus_total', {
+    inputs: ['corpus'], title: 'Interviews in total', description: 'Sum of interviews over the three splits.',
+    fn: (corpus) => [{sessions: corpus.reduce((a, r) => a + (+r.sessions), 0), depressed: corpus.reduce((a, r) => a + (+r.depressed), 0)}]
+  });
+  dash.calc('best_probe', {
+    inputs: ['probes'], title: 'Best probe layer by family',
+    description: 'The speech layer (Whisper or HuBERT) and the text features (RoBERTa layer or mpnet) with the highest test AUC.',
+    fn: (probes) => {
+      const best = (rs) => rs.reduce((a, r) => (a == null || +r.auc_test > +a.auc_test) ? r : a, null);
+      const speech = best(probes.filter((r) => r.model === 'whisper_small' || r.model === 'hubert_base'));
+      const text = best(probes.filter((r) => r.model === 'roberta_base' || r.model === 'mpnet'));
+      return [speech && {family: 'speech', model: speech.model, layer: speech.layer, auc_test: speech.auc_test},
+              text && {family: 'text', model: text.model, layer: text.layer, auc_test: text.auc_test}].filter(Boolean);
+    }
+  });
+
+  // ---- headline numbers ----------------------------------------------------------
+  const cell = (id, pick, f) => (el) => {
+    const d = dash.data(id);
+    if (d.status !== 'ok') { el.textContent = '—'; return; }
+    const r = pick(d.data);
+    el.textContent = r == null ? '—' : f(r);
+  };
+  dash.draw('v-segments', cell('segments_compare', (rs) => rs.find((r) => r.measure === 'segments'), (r) => (+r.v2).toLocaleString('en-US')));
+  dash.draw('v-sessions', cell('corpus_total', (rs) => rs[0], (r) => (+r.sessions).toLocaleString('en-US')));
+  dash.draw('v-best-text', cell('best_probe', (rs) => rs.find((r) => r.family === 'text'), (r) => DS.num(r.auc_test)));
+  dash.draw('v-best-speech', cell('best_probe', (rs) => rs.find((r) => r.family === 'speech'), (r) => DS.num(r.auc_test)));
+
+  // ---- tables --------------------------------------------------------------------
+  const table = (id, key, cells) => (tb) => {
+    const d = dash.data(id);
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    DS.rows(tb, d.data, key, cells);
+  };
+  dash.draw('t-corpus', table('corpus', (r) => r.split, (r) => [r.split, r.sessions, r.depressed, r.gender_1, DS.num(r.phq8_mean, 1), DS.num(r.phq8_median, 1)]));
+  dash.draw('t-compare', table('segments_compare', (r) => r.measure, (r) => [DS.MEASURES[r.measure] || r.measure, DS.smart(r.v2), DS.smart(r.v1)]));
+  dash.draw('t-totals', table('segmentation_totals', (r) => r.measure, (r) => [DS.MEASURES[r.measure] || r.measure, DS.smart(r.count)]));
+  const sig = (r, v) => ({text: v, cls: r.q != null && +r.q < 0.05 ? 'ds-sig' : ''});
+  dash.draw('t-transcripts', table('transcript_by_group', (r) => r.metric_id, (r) => [r.metric, DS.smart(r.median), DS.smart(r.median_not_depressed), DS.smart(r.median_depressed), sig(r, DS.num(r.r)), sig(r, DS.pfmt(r.q))]));
+  dash.draw('t-audio', table('audio_by_group', (r) => r.metric_id, (r) => [r.metric, DS.smart(r.median), DS.smart(r.p5), DS.smart(r.p95), DS.smart(r.median_not_depressed), DS.smart(r.median_depressed), sig(r, DS.num(r.r)), sig(r, DS.pfmt(r.q))]));
+  dash.draw('t-egemaps', table('egemaps_by_group', (r) => r.metric_id, (r) => [r.metric, DS.smart(r.median), DS.smart(r.median_not_depressed), DS.smart(r.median_depressed), sig(r, DS.num(r.r)), sig(r, DS.pfmt(r.q))]));
+  dash.draw('t-frames', table('frames', (r) => `${r.model},${r.layer}`, (r) => [DS.NAMES[r.model] || r.model, r.layer, r.sessions, (+r.frames).toLocaleString('en-US'), DS.num(r.mean_norm), DS.num(r.adjacent_cos, 3)]));
+
+  // legend swatches take the series colors
+  dash.onData(() => {
+    document.querySelectorAll('.ds .ds-legend i').forEach((i) => {
+      for (const k of [0, 1, 2]) if (i.classList.contains('ds-c' + k)) i.style.background = DS.color(k);
+    });
+  });
+
+  // ---- charts --------------------------------------------------------------------
+  dash.draw('c-phq', (el) => {
+    const d = dash.data('phq8_hist');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    el.replaceChildren();
+    const h = 200, {svg, w} = DS.svgIn(el, h, 'Histogram of PHQ-8 scores per interview, with scores of 10 and above marked as depressed');
+    const x = d3.scaleBand().domain(d.data.map((r) => +r.score)).range([28, w - 6]).padding(0.15);
+    const y = d3.scaleLinear().domain([0, d3.max(d.data, (r) => +r.sessions) || 1]).nice().range([h - 24, 8]);
+    svg.append('g').attr('transform', `translate(0,${h - 24})`).call(d3.axisBottom(x).tickValues(x.domain().filter((v) => v % 5 === 0)));
+    svg.append('g').attr('transform', 'translate(28,0)').call(d3.axisLeft(y).ticks(4).tickFormat(d3.format('d')))
+      .call((g) => g.selectAll('.tick line').clone().attr('x2', w - 34).attr('class', 'ds-gridline'));
+    const t = DS.tip(el);
+    svg.append('g').selectAll('rect').data(d.data).join('rect')
+      .attr('x', (r) => x(+r.score)).attr('width', x.bandwidth()).attr('y', (r) => y(+r.sessions)).attr('height', (r) => y(0) - y(+r.sessions))
+      .attr('rx', 2).style('fill', (r) => DS.color(+r.depressed))
+      .on('pointermove', (ev, r) => t.show(ev, [`PHQ-8 = ${r.score}`, `${r.sessions} interviews`])).on('pointerleave', () => t.hide());
+  });
+
+  dash.draw('c-lengths', (el) => {
+    const d = dash.data('length_hist');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    const mid = (r) => Math.sqrt(+r.from_s * +r.to_s);
+    const mk = (k) => d.data.map((r) => ({x: mid(r), y: +r[k]}));
+    DS.lineChart(el, {
+      label: 'Distribution of segment lengths in v2 and v1 and of raw transcript row lengths, on a log scale',
+      height: 300, xLog: true, xDomain: [0.2, 30], xTickValues: [0.2, 0.5, 1, 2, 5, 10, 30], xFmt: (v) => `${+v.toPrecision(2)} s`,
+      series: [{name: 'v2 segments', color: DS.color(0), points: mk('v2_segments'), dots: false},
+               {name: 'v1 segments', color: DS.color(1), points: mk('v1_segments'), dots: false},
+               {name: 'raw transcript rows', color: 'var(--color-fg-muted)', points: mk('transcript_rows'), dots: false, dash: '4 3', width: 1.5}],
+      yDomain: [0, d3.max(d.data, (r) => Math.max(+r.v2_segments, +r.v1_segments, +r.transcript_rows))],
+      yFmt: d3.format('~s'),
+      refs: []
+    });
+  });
+
+  dash.draw('c-effects', (el) => {
+    const d = dash.data('transcript_by_group');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    el.replaceChildren();
+    const data = d.data.filter((r) => r.r != null);
+    const h = Math.max(220, data.length * 18 + 30), {svg, w} = DS.svgIn(el, h, 'Rank-biserial effect size of each transcript measure, depressed versus not');
+    const ml = Math.min(220, w * 0.5);
+    const x = d3.scaleLinear().domain([-1, 1]).range([ml, w - 10]);
+    const y = d3.scaleBand().domain(data.map((r) => r.metric_id)).range([6, h - 24]).padding(0.25);
+    svg.append('g').attr('transform', `translate(0,${h - 24})`).call(d3.axisBottom(x).ticks(5));
+    svg.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', h - 24).style('stroke', 'var(--cds-chart-reference)');
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', ml - 6).attr('y', (r) => y(r.metric_id) + y.bandwidth() / 2)
+      .attr('dy', '0.32em').attr('text-anchor', 'end').style('font-weight', (r) => r.q != null && +r.q < 0.05 ? 600 : 400)
+      .text((r) => { const n = Math.max(10, Math.floor((ml - 10) / 6.4)); return r.metric.length > n ? r.metric.slice(0, n - 1) + '…' : r.metric; })
+      .append('title').text((r) => r.metric);
+    const t = DS.tip(el);
+    svg.append('g').selectAll('rect').data(data).join('rect')
+      .attr('x', (r) => Math.min(x(0), x(+r.r))).attr('width', (r) => Math.abs(x(+r.r) - x(0))).attr('y', (r) => y(r.metric_id)).attr('height', y.bandwidth())
+      .attr('rx', 2).style('fill', (r) => +r.r >= 0 ? DS.color(1) : DS.color(0)).style('opacity', (r) => r.q != null && +r.q < 0.05 ? 1 : 0.45)
+      .on('pointermove', (ev, r) => t.show(ev, [r.metric, `r = ${DS.num(r.r)}`, `p = ${DS.pfmt(r.p)}, q = ${DS.pfmt(r.q)}`,
+        `median ${DS.smart(r.median_not_depressed)} (PHQ < 10) vs ${DS.smart(r.median_depressed)} (PHQ ≥ 10)`]))
+      .on('pointerleave', () => t.hide());
+  });
+
+  dash.draw('c-geo', (el) => {
+    const d = dash.data('geometry');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    const metric = el.dataset.metric;
+    const series = DS.MODELS.map((m, i) => ({name: DS.NAMES[m], color: DS.color(i),
+      points: d.data.filter((r) => r.model === m).map((r) => ({x: +r.layer, y: r[metric] == null ? null : +r[metric]}))}));
+    DS.lineChart(el, {label: `${metric} by layer for Whisper, HuBERT and RoBERTa`, height: 190, xDomain: [0, 12], xTicks: 4, series,
+      yFmt: metric === 'pca90' ? d3.format('d') : (v) => DS.num(v, 2)});
+  });
+
+  dash.draw('c-probe', (el) => {
+    const d = dash.data('probes');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    const split = el.dataset.split;
+    const k = `auc_${split}`;
+    const series = DS.MODELS.map((m, i) => ({name: DS.NAMES[m], color: DS.color(i),
+      points: d.data.filter((r) => r.model === m).map((r) => ({x: +r.layer, y: +r[k],
+        lo: split === 'test' ? +r.auc_test_lo : null, hi: split === 'test' ? +r.auc_test_hi : null}))}));
+    const ref = (m) => d.data.find((r) => r.model === m);
+    const refs = ['mpnet', 'egemaps'].filter(ref).map((m) => ({y: +ref(m)[k], label: DS.NAMES[m]}))
+      .concat([{y: 0.5, label: 'chance', dash: '1 3'}]);
+    DS.lineChart(el, {label: `Interview-level AUC for PHQ-8 of 10 or more on ${split}, by layer`, height: 300, xDomain: [0, 12], xTicks: 4,
+      yDomain: [0.2, 1], series, refs, bands: split === 'test' ? series.map((s) => ({color: s.color, points: s.points})) : [],
+      yFmt: (v) => DS.num(v, 2)});
+  });
+
+  dash.draw('c-cka', (el) => {
+    const d = dash.data('cka');
+    if (d.status !== 'ok') return DS.placeholder(el, d.status);
+    el.replaceChildren();
+    const order = DS.MODELS.flatMap((m) => d3.range(13).map((l) => `${m}:${l}`));
+    const w0 = Math.max(260, el.clientWidth || 320);
+    const ml = 64, size = Math.min(w0 - ml - 8, 560);
+    const h = size + 40;
+    const {svg} = DS.svgIn(el, h, 'Linear CKA similarity between every pair of layers of Whisper, HuBERT and RoBERTa');
+    const band = d3.scaleBand().domain(order).range([0, size]);
+    const g = svg.append('g').attr('transform', `translate(${ml},4)`);
+    const t = DS.tip(el);
+    g.selectAll('rect').data(d.data).join('rect')
+      .attr('x', (r) => band(`${r.model_b}:${r.layer_b}`)).attr('y', (r) => band(`${r.model_a}:${r.layer_a}`))
+      .attr('width', band.bandwidth()).attr('height', band.bandwidth())
+      .style('fill', DS.color(0)).style('fill-opacity', (r) => Math.max(0.03, +r.cka))
+      .on('pointermove', (ev, r) => t.show(ev, [`${DS.NAMES[r.model_a]} L${r.layer_a} ~ ${DS.NAMES[r.model_b]} L${r.layer_b}`, `CKA ${DS.num(r.cka, 3)}`]))
+      .on('pointerleave', () => t.hide());
+    DS.MODELS.forEach((m, i) => {
+      const y0 = band(`${m}:0`), y1 = band(`${m}:12`) + band.bandwidth();
+      svg.append('text').attr('x', ml - 6).attr('y', 4 + (y0 + y1) / 2).attr('dy', '0.32em').attr('text-anchor', 'end').text(['Whisper', 'HuBERT', 'RoBERTa'][i]);
+      svg.append('text').attr('x', ml + (y0 + y1) / 2).attr('y', size + 20).attr('text-anchor', 'middle').text(['Whisper', 'HuBERT', 'RoBERTa'][i]);
+      if (i) {
+        g.append('line').attr('x1', 0).attr('x2', size).attr('y1', y0).attr('y2', y0).style('stroke', 'var(--color-bg)').attr('stroke-width', 2);
+        g.append('line').attr('y1', 0).attr('y2', size).attr('x1', y0).attr('x2', y0).style('stroke', 'var(--color-bg)').attr('stroke-width', 2);
+      }
+    });
+  });
+</script>
