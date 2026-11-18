@@ -18,6 +18,7 @@ dependencies = [
   "datasets",
   "pyyaml",
   "scikit-learn",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
