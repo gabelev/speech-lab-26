@@ -1,6 +1,6 @@
 # Raw DAIC-WOZ data and generated outputs are covered by the EULA: never commit them.
-data/
-outputs/
+/data/
+/outputs/
 *.wav
 *.zip
 .venv/

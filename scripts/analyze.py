@@ -433,7 +433,7 @@ def main() -> None:
                              "peak_dbfs": "peak (dBFS)", "clipped_pct": "clipped samples (%)",
                              "dc_offset": "DC offset"}, "audio_by_group")
             n_clip = int((au.clipped_pct > 0.01).sum())
-            md += [f"{n_clip} of {len(au)} sessions have more than 0.01% clipped samples.", ""]
+            md += [f"{n_clip} of {len(au)} sessions {'has' if n_clip == 1 else 'have'} more than 0.01% clipped samples.", ""]
             fig, axes = plt.subplots(1, 2, figsize=(8, 2.8))
             axes[0].hist(au.snr_db, bins=25, color=BLUE, edgecolor=SURFACE)
             axes[0].set(xlabel="dB", ylabel="sessions", title="SNR estimate")
